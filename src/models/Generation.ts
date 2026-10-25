@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, deleteModel, model, models, type InferSchemaType, type Model } from "mongoose";
 import { APPEARANCE_MATERIALS, FORMATS, MODEL_VERSIONS } from "@/lib/print-settings";
 import { IMAGE_QUALITIES, STYLE_PRESETS } from "@/lib/image-settings";
 
@@ -52,6 +52,8 @@ const model3dSchema = new Schema(
     rawFileUrl: { type: String },
     rawFilePathname: { type: String },
     processingClaimedAt: { type: Date },
+    // 上一版的檔案：新版本處理成功後就刪掉，節省 Blob 空間
+    staleFileUrls: { type: [String], default: undefined },
 
     // 完成後的結果
     fileUrl: { type: String },
@@ -93,6 +95,6 @@ const generationSchema = new Schema(
 export type GenerationDoc = InferSchemaType<typeof generationSchema>;
 export type Model3dDoc = NonNullable<GenerationDoc["model3d"]>;
 
-export const Generation: Model<GenerationDoc> =
-  (models.Generation as Model<GenerationDoc>) ||
-  model<GenerationDoc>("Generation", generationSchema);
+// 開發時程式熱重載，mongoose 會留著舊版 schema（新欄位會被默默丟掉），所以每次都重新註冊
+if (models.Generation) deleteModel("Generation");
+export const Generation: Model<GenerationDoc> = model<GenerationDoc>("Generation", generationSchema);

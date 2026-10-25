@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import HistoryActions from "@/components/HistoryActions";
+import StorageCleanup from "@/components/StorageCleanup";
 import { listGenerations } from "@/lib/generations";
 import { STYLE_PRESETS } from "@/lib/image-settings";
 
@@ -20,6 +22,7 @@ export default function HistoryPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
       <h1 className="text-3xl font-semibold">歷史紀錄</h1>
+      <StorageCleanup />
       <Suspense fallback={<p className="text-zinc-500">載入中…</p>}>
         <HistoryList />
       </Suspense>
@@ -39,12 +42,13 @@ async function HistoryList() {
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
       {generations.map((g) => {
         const style = STYLE_PRESETS.find((s) => s.value === g.style);
+        const m = g.model3d;
         return (
-          <li key={g.id}>
-            <Link
-              href={`/generations/${g.id}`}
-              className="flex h-full flex-col overflow-hidden rounded-lg border border-zinc-300 transition-colors hover:border-foreground dark:border-zinc-700"
-            >
+          <li
+            key={g.id}
+            className="flex flex-col overflow-hidden rounded-lg border border-zinc-300 transition-colors hover:border-foreground dark:border-zinc-700"
+          >
+            <Link href={`/generations/${g.id}`} className="flex flex-1 flex-col">
               {g.outputImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={g.outputImageUrl} alt="" className="aspect-square w-full bg-white object-contain" />
@@ -61,12 +65,18 @@ async function HistoryList() {
                   {style && style.value !== "none" && `・${style.label}`}
                 </p>
                 <p className="mt-auto text-zinc-500">
-                  {g.model3d
-                    ? `${STATUS_LABEL[g.model3d.status]}${g.model3d.format ? `・${g.model3d.format}` : ""}`
-                    : "尚未轉 3D"}
+                  {m ? `${STATUS_LABEL[m.status]}${m.format ? `・${m.format}` : ""}` : "尚未轉 3D"}
                 </p>
               </div>
             </Link>
+            <HistoryActions
+              deleteApi={`/api/generations/${g.id}`}
+              downloads={[
+                ...(g.outputImageUrl ? [{ label: "下載圖片", url: g.outputImageUrl }] : []),
+                ...(m?.status === "done" && m.fileUrl ? [{ label: `下載 ${m.format ?? "3D"} 檔`, url: m.fileUrl }] : []),
+              ]}
+              busy={!!m && m.status !== "done" && m.status !== "failed"}
+            />
           </li>
         );
       })}

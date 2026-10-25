@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { downloadUrl } from "@/lib/blob-url";
 import type { Model3dStatus, Model3dView } from "@/lib/generation-view";
 import {
   APPEARANCE_MATERIALS,
@@ -392,7 +393,7 @@ export default function ModelPanel({
                 </ul>
               )}
               <a
-                href={model3d.fileUrl}
+                href={downloadUrl(model3d.fileUrl)}
                 download
                 className="flex h-12 items-center justify-center rounded-full border border-zinc-300 font-medium dark:border-zinc-700"
               >

@@ -1,5 +1,6 @@
 import { isValidObjectId, type Types } from "mongoose";
 import { put } from "@vercel/blob";
+import { deleteBlobs } from "@/lib/blob-cleanup";
 import { connectDB } from "@/lib/mongodb";
 import { toModel3dView } from "@/lib/generation-view";
 import { processModelFile } from "@/lib/model-file";
@@ -66,7 +67,14 @@ export async function POST(request: Request, ctx: Ctx) {
     reuseModel && (!needsTexture(settings) || (!!prev!.textureReady && sameTextureOptions(prevSettings, settings)));
   const reuseRaw = reuseTexture && !!prev!.rawFileUrl && sameConvertOptions(prevSettings, settings);
 
-  const base = { ...settings, progress: 0, uploadAttempts: 0 };
+  // 上一版的成品一定會被取代；原始檔沒有沿用的話也會被取代
+  // 上一次失敗時還沒刪掉的舊檔也一起帶著
+  const staleFileUrls = [
+    prev?.fileUrl,
+    reuseRaw ? null : prev?.rawFileUrl,
+    ...(prev?.staleFileUrls ?? []),
+  ].filter((url): url is string => Boolean(url));
+  const base = { ...settings, progress: 0, uploadAttempts: 0, staleFileUrls };
   const kept = {
     modelTaskId: reuseModel ? prev!.modelTaskId : undefined,
     modelReady: reuseModel,
@@ -250,9 +258,11 @@ async function processFile(id: Types.ObjectId, m: Model3dDoc) {
           "model3d.stats": info.stats,
           "model3d.fileSizeBytes": buffer.length,
         },
-        $unset: { "model3d.processingClaimedAt": "", "model3d.error": "" },
+        $unset: { "model3d.processingClaimedAt": "", "model3d.error": "", "model3d.staleFileUrls": "" },
       },
     );
+    // 新版本完成後才刪舊檔，處理失敗時舊檔還在（之後可用「清理儲存空間」刪掉）
+    await deleteBlobs(m.staleFileUrls ?? []);
   } catch (error) {
     console.error("處理模型檔失敗", error);
     await Generation.updateOne({ _id: id }, { $unset: { "model3d.processingClaimedAt": "" } });

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import HistoryActions from "@/components/HistoryActions";
+import StorageCleanup from "@/components/StorageCleanup";
 import {
   DESIGN_BACKGROUNDS,
   DESIGN_LIGHTING,
@@ -24,6 +26,7 @@ export default function DesignHistoryPage() {
           ← 回到設計 3D 圖
         </Link>
       </div>
+      <StorageCleanup />
       <Suspense fallback={<p className="text-zinc-500">載入中…</p>}>
         <DesignList />
       </Suspense>
@@ -89,6 +92,12 @@ async function DesignList() {
             <summary className="cursor-pointer text-zinc-500">提示詞</summary>
             <p className="mt-2 text-zinc-600 dark:text-zinc-400">{d.prompt}</p>
           </details>
+
+          <HistoryActions
+            deleteApi={`/api/designs/${d.id}`}
+            downloads={d.imageUrls.map((url, i) => ({ label: `下載第 ${i + 1} 張`, url }))}
+            className=""
+          />
         </li>
       ))}
     </ul>

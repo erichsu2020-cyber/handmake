@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, deleteModel, model, models, type InferSchemaType, type Model } from "mongoose";
 
 // 「設計 3D 圖」頁面的紀錄，與第 1／2 步的 Generation 分開存放（collection：designimages）
 
@@ -39,6 +39,6 @@ const designImageSchema = new Schema(
 
 export type DesignImageDoc = InferSchemaType<typeof designImageSchema>;
 
-export const DesignImage: Model<DesignImageDoc> =
-  (models.DesignImage as Model<DesignImageDoc>) ||
-  model<DesignImageDoc>("DesignImage", designImageSchema);
+// 開發時程式熱重載，mongoose 會留著舊版 schema（新欄位會被默默丟掉），所以每次都重新註冊
+if (models.DesignImage) deleteModel("DesignImage");
+export const DesignImage: Model<DesignImageDoc> = model<DesignImageDoc>("DesignImage", designImageSchema);

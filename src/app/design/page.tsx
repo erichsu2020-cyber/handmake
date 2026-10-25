@@ -16,6 +16,7 @@ import {
   buildDesignPrompt,
   type DesignInput,
 } from "@/lib/design-settings";
+import { downloadUrl } from "@/lib/blob-url";
 import type { DesignView } from "@/lib/designs";
 
 const EXAMPLES = [
@@ -257,7 +258,7 @@ export default function DesignPage() {
               <figure key={url} className="flex flex-col gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={url} alt={`設計圖 ${i + 1}`} className="w-full rounded-lg" />
-                <a href={url} download className="text-center text-sm underline">
+                <a href={downloadUrl(url)} className="text-center text-sm underline">
                   下載第 {i + 1} 張
                 </a>
               </figure>
