@@ -1,10 +1,11 @@
 import { isValidObjectId, type Types } from "mongoose";
 import { put } from "@vercel/blob";
 import { connectDB } from "@/lib/mongodb";
-import { parsePrintSettings } from "@/lib/print-settings";
-import { scaleStlToHeight } from "@/lib/stl";
-import { createConvertToStlTask, createImageToModelTask, getTask } from "@/lib/tripo";
-import { Generation } from "@/models/Generation";
+import { toModel3dView } from "@/lib/generation-view";
+import { processModelFile } from "@/lib/model-file";
+import { FORMATS, parseModelSettings, sameGenerateOptions } from "@/lib/print-settings";
+import { createConvertTask, createImageToModelTask, getTask } from "@/lib/tripo";
+import { Generation, type Model3dDoc } from "@/models/Generation";
 
 type Ctx = RouteContext<"/api/generations/[id]/model3d">;
 
@@ -21,9 +22,14 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "未知錯誤";
 }
 
-// 開始：用使用者選的高度與面數，把第 1 步的圖片轉成 STL
+async function currentView(id: Types.ObjectId) {
+  const updated = await Generation.findById(id, { model3d: 1 }).lean();
+  return toModel3dView(updated?.model3d);
+}
+
+// 開始：用使用者選的設定，把第 1 步的圖片轉成 3D 列印檔
 export async function POST(request: Request, ctx: Ctx) {
-  const settings = parsePrintSettings(await request.json().catch(() => null));
+  const settings = parseModelSettings(await request.json().catch(() => null));
   if (typeof settings === "string") {
     return Response.json({ error: settings }, { status: 400 });
   }
@@ -36,20 +42,25 @@ export async function POST(request: Request, ctx: Ctx) {
     return Response.json({ error: "這張圖正在轉換中，請等它完成" }, { status: 409 });
   }
 
+  // 之前的 3D 模型已經產生成功（有轉檔任務），而且產生設定沒變 → 只要重新轉檔，省下產生模型的點數
+  const reuseModelTaskId =
+    previous?.modelTaskId && previous.convertTaskId && sameGenerateOptions(previous, settings)
+      ? previous.modelTaskId
+      : null;
+
   try {
-    // 之前的 3D 模型已經產生成功（有轉檔任務）→ 只要用新設定重新轉檔，省下產生模型的點數
-    if (previous?.modelTaskId && previous.convertTaskId) {
+    if (reuseModelTaskId) {
       generation.model3d = {
         status: "converting",
         progress: 0,
         ...settings,
         uploadAttempts: 0,
-        modelTaskId: previous.modelTaskId,
+        modelTaskId: reuseModelTaskId,
       };
       await generation.save();
-      await startConvert(generation._id, previous.modelTaskId, settings.faceLimit);
+      await startConvert(generation._id, reuseModelTaskId, generation.model3d);
     } else {
-      const modelTaskId = await createImageToModelTask(generation.outputImageUrl);
+      const modelTaskId = await createImageToModelTask(generation.outputImageUrl, settings);
       generation.model3d = {
         status: "generating",
         progress: 0,
@@ -65,8 +76,7 @@ export async function POST(request: Request, ctx: Ctx) {
     return Response.json({ error: errorMessage(error) }, { status: 502 });
   }
 
-  const updated = await Generation.findById(generation._id, { model3d: 1 }).lean();
-  return Response.json({ model3d: updated?.model3d });
+  return Response.json({ model3d: await currentView(generation._id) });
 }
 
 // 查詢進度：前端輪詢這支 API，每次呼叫會推進到下一個階段
@@ -92,7 +102,7 @@ export async function GET(_request: Request, ctx: Ctx) {
           { $set: { "model3d.status": "converting", "model3d.progress": 0 } },
         );
         if (claimed.modifiedCount === 1) {
-          await startConvert(id, model3d.modelTaskId, model3d.faceLimit);
+          await startConvert(id, model3d.modelTaskId, model3d);
         }
       } else {
         await Generation.updateOne({ _id: id }, { $set: { "model3d.progress": task.progress } });
@@ -101,14 +111,14 @@ export async function GET(_request: Request, ctx: Ctx) {
       const task = await getTask(model3d.convertTaskId);
 
       if (task.status === "failed" || task.status === "cancelled") {
-        await markFailed(id, `轉換 STL 失敗：${task.error_message ?? task.status}`);
+        await markFailed(id, `轉檔失敗：${task.error_message ?? task.status}`);
       } else if (task.status === "success" && task.output?.model_url) {
         const claimed = await Generation.updateOne(
           { _id: id, "model3d.status": "converting" },
           { $set: { "model3d.status": "uploading" } },
         );
         if (claimed.modifiedCount === 1) {
-          await uploadStl(id, task.output.model_url, model3d.heightMm);
+          await uploadModelFile(id, task.output.model_url, model3d);
         }
       } else {
         await Generation.updateOne({ _id: id }, { $set: { "model3d.progress": task.progress } });
@@ -119,25 +129,30 @@ export async function GET(_request: Request, ctx: Ctx) {
     await markFailed(id, errorMessage(error));
   }
 
-  const updated = await Generation.findById(id, { model3d: 1 }).lean();
-  return Response.json({ model3d: updated?.model3d });
+  return Response.json({ model3d: await currentView(id) });
 }
 
-async function startConvert(id: Types.ObjectId, modelTaskId: string, faceLimit: number) {
-  const convertTaskId = await createConvertToStlTask(modelTaskId, faceLimit);
+async function startConvert(id: Types.ObjectId, modelTaskId: string, model3d: Model3dDoc) {
+  const convertTaskId = await createConvertTask(modelTaskId, model3d);
   await Generation.updateOne({ _id: id }, { $set: { "model3d.convertTaskId": convertTaskId } });
 }
 
 // Tripo 的下載網址只有幾分鐘有效，所以下載後縮放到指定高度，再存到自己的 Vercel Blob
-async function uploadStl(id: Types.ObjectId, modelUrl: string, heightMm: number) {
+async function uploadModelFile(id: Types.ObjectId, modelUrl: string, model3d: Model3dDoc) {
+  const format = FORMATS.find((f) => f.value === model3d.format)!;
+
   try {
     const res = await fetch(modelUrl, { cache: "no-store" });
-    if (!res.ok) throw new Error(`下載 STL 失敗 (${res.status})`);
+    if (!res.ok) throw new Error(`下載模型檔失敗 (${res.status})`);
 
-    const { buffer, info } = scaleStlToHeight(Buffer.from(await res.arrayBuffer()), heightMm);
-    const blob = await put("handmake/models/model.stl", buffer, {
+    const { buffer, info } = processModelFile(
+      format.value,
+      Buffer.from(await res.arrayBuffer()),
+      model3d.heightMm,
+    );
+    const blob = await put(`handmake/models/model.${format.ext}`, buffer, {
       access: "public",
-      contentType: "model/stl",
+      contentType: format.contentType,
       addRandomSuffix: true,
     });
 
@@ -147,8 +162,8 @@ async function uploadStl(id: Types.ObjectId, modelUrl: string, heightMm: number)
         $set: {
           "model3d.status": "done",
           "model3d.progress": 100,
-          "model3d.stlUrl": blob.url,
-          "model3d.stlPathname": blob.pathname,
+          "model3d.fileUrl": blob.url,
+          "model3d.filePathname": blob.pathname,
           "model3d.dimensionsMm": info.dimensionsMm,
           "model3d.triangles": info.triangles,
           "model3d.fileSizeBytes": buffer.length,
@@ -157,14 +172,14 @@ async function uploadStl(id: Types.ObjectId, modelUrl: string, heightMm: number)
     );
   } catch (error) {
     // 退回「轉檔」狀態讓下一次輪詢重試（下載網址過期前），超過次數就放棄
-    console.error("處理 STL 失敗", error);
+    console.error("處理模型檔失敗", error);
     const updated = await Generation.findOneAndUpdate(
       { _id: id },
       { $set: { "model3d.status": "converting" }, $inc: { "model3d.uploadAttempts": 1 } },
       { new: true },
     ).lean();
     if ((updated?.model3d?.uploadAttempts ?? 0) >= MAX_UPLOAD_ATTEMPTS) {
-      await markFailed(id, `處理 STL 失敗：${errorMessage(error)}`);
+      await markFailed(id, `處理模型檔失敗：${errorMessage(error)}`);
     }
   }
 }

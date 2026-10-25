@@ -1,7 +1,8 @@
+import { isP1, type ConvertOptions, type GenerateOptions } from "@/lib/print-settings";
+
 // Tripo3D API v3：https://developers.tripo3d.com/en/docs/introduction
 // 注意：這把金鑰只在 .ai 網域有效，.com 會回 401
 const BASE_URL = process.env.TRIPO_BASE_URL || "https://openapi.tripo3d.ai/v3";
-const MODEL_VERSION = process.env.TRIPO_MODEL_VERSION || "v3.1-20260211";
 
 export type TripoTask = {
   task_id: string;
@@ -9,6 +10,7 @@ export type TripoTask = {
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   progress: number;
   output?: { model_url?: string; rendered_image_url?: string };
+  credits_consumed?: number;
   error_code?: number;
   error_message?: string;
 };
@@ -34,30 +36,41 @@ async function tripoFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data as T;
 }
 
-// 圖片轉 3D：只要幾何形狀（列印用不到貼圖，也比較省點數）
-export async function createImageToModelTask(imageUrl: string) {
+// 圖片轉 3D。沒開彩色時只要幾何形狀（列印用不到貼圖，也比較省點數）
+export async function createImageToModelTask(imageUrl: string, options: GenerateOptions) {
+  const p1 = isP1(options.modelVersion);
   const data = await tripoFetch<{ task_id: string }>("/generation/image-to-model", {
     method: "POST",
     body: JSON.stringify({
       input: imageUrl,
-      model_version: MODEL_VERSION,
-      texture: false,
+      model_version: options.modelVersion,
+      texture: options.color,
       pbr: false,
+      orientation: options.alignToImage ? "align_image" : "default",
+      enable_image_autofix: options.imageAutofix,
+      // P1 版本連 false 都不能帶，只能完全省略
+      ...(p1
+        ? {}
+        : { geometry_quality: options.geometryQuality, generate_parts: options.generateParts }),
     }),
   });
   return data.task_id;
 }
 
-// 轉成 STL：減面到 faceLimit、底部壓平、原點移到底部中心，放進切片軟體比較好擺
-export async function createConvertToStlTask(modelTaskId: string, faceLimit: number) {
+// 轉檔：減面、底部壓平、原點移到底部中心；彩色 OBJ 會把顏色存在頂點上
+export async function createConvertTask(
+  modelTaskId: string,
+  options: ConvertOptions & { color: boolean },
+) {
   const data = await tripoFetch<{ task_id: string }>("/models/convert", {
     method: "POST",
     body: JSON.stringify({
       input: modelTaskId,
-      format: "STL",
-      face_limit: faceLimit,
-      flatten_bottom: true,
+      format: options.format,
+      face_limit: options.faceLimit,
+      flatten_bottom: options.flattenBottom,
       pivot_to_center_bottom: true,
+      ...(options.format === "OBJ" && options.color ? { export_vertex_colors: true } : {}),
     }),
   });
   return data.task_id;

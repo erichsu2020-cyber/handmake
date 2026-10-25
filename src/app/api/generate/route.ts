@@ -1,6 +1,13 @@
 import OpenAI from "openai";
 import { put } from "@vercel/blob";
 import { connectDB } from "@/lib/mongodb";
+import { toGenerationView } from "@/lib/generation-view";
+import {
+  DEFAULT_IMAGE_QUALITY,
+  DEFAULT_STYLE,
+  IMAGE_QUALITIES,
+  STYLE_PRESETS,
+} from "@/lib/image-settings";
 import { Generation } from "@/models/Generation";
 
 const MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
@@ -34,6 +41,10 @@ export async function POST(request: Request) {
   const prompt = String(formData.get("prompt") ?? "").trim();
   const image = formData.get("image");
   const file = image instanceof File && image.size > 0 ? image : null;
+  const style = STYLE_PRESETS.find((s) => s.value === (formData.get("style") ?? DEFAULT_STYLE));
+  const quality = IMAGE_QUALITIES.find(
+    (q) => q.value === (formData.get("quality") ?? DEFAULT_IMAGE_QUALITY),
+  );
 
   if (!prompt && !file) {
     return Response.json({ error: "請輸入文字或上傳一張圖片" }, { status: 400 });
@@ -44,17 +55,38 @@ export async function POST(request: Request) {
   if (file && file.size > MAX_IMAGE_BYTES) {
     return Response.json({ error: "圖片不能超過 20MB" }, { status: 400 });
   }
+  if (!style || !quality) {
+    return Response.json({ error: "風格或品質選項不正確" }, { status: 400 });
+  }
+
+  // 原圖也存到 Vercel Blob，歷史紀錄才看得到
+  let inputImageUrl: string | undefined;
+  if (file) {
+    try {
+      const ext = file.type.split("/")[1];
+      const inputBlob = await put(`handmake/inputs/upload.${ext}`, file, {
+        access: "public",
+        contentType: file.type,
+        addRandomSuffix: true,
+      });
+      inputImageUrl = inputBlob.url;
+    } catch (error) {
+      console.error("上傳原圖到 Vercel Blob 失敗", error);
+      return Response.json({ error: "上傳原圖失敗" }, { status: 500 });
+    }
+  }
+
+  const stylePrompt = style.prompt ? ` Style it ${style.prompt}.` : "";
+  const fullPrompt = file
+    ? `Turn the object in this image into a 3D model.${stylePrompt} ${STYLE_PROMPT}${prompt ? ` Extra details: ${prompt}` : ""}`
+    : `${prompt}.${stylePrompt} ${STYLE_PROMPT}`;
 
   const openai = new OpenAI();
-  const fullPrompt = file
-    ? `Turn the object in this image into a 3D model. ${STYLE_PROMPT}${prompt ? ` Extra details: ${prompt}` : ""}`
-    : `${prompt}. ${STYLE_PROMPT}`;
-
   let b64: string | undefined;
   try {
     const result = file
-      ? await openai.images.edit({ model: MODEL, image: file, prompt: fullPrompt })
-      : await openai.images.generate({ model: MODEL, prompt: fullPrompt });
+      ? await openai.images.edit({ model: MODEL, image: file, prompt: fullPrompt, quality: quality.value })
+      : await openai.images.generate({ model: MODEL, prompt: fullPrompt, quality: quality.value });
     b64 = result.data?.[0]?.b64_json;
   } catch (error) {
     console.error("OpenAI 產生圖片失敗", error);
@@ -83,15 +115,15 @@ export async function POST(request: Request) {
     const doc = await Generation.create({
       mode: file ? "image" : "text",
       prompt,
+      style: style.value,
+      quality: quality.value,
       model: MODEL,
-      inputImage: file
-        ? { data: Buffer.from(await file.arrayBuffer()), contentType: file.type }
-        : undefined,
+      inputImageUrl,
       outputImageUrl: blob.url,
       outputImagePathname: blob.pathname,
     });
 
-    return Response.json({ id: doc._id.toString(), imageUrl: blob.url });
+    return Response.json({ generation: toGenerationView(doc.toObject()) });
   } catch (error) {
     console.error("寫入 MongoDB 失敗", error);
     return Response.json({ error: "圖片已產生，但寫入資料庫失敗" }, { status: 500 });
