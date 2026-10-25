@@ -15,14 +15,16 @@ export default function LoginForm({ next }: { next: string }) {
       <input type="hidden" name="next" value={next} />
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Email</span>
+        <span className="text-sm font-medium">帳號</span>
         <input
-          name="email"
-          type="email"
-          autoComplete="email"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           required
-          defaultValue={state.email}
-          placeholder="you@example.com"
+          defaultValue={state.username}
+          placeholder="你的帳號"
           className={inputClass}
         />
       </label>

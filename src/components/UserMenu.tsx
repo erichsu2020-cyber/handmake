@@ -6,8 +6,8 @@ export default async function UserMenu() {
   const user = await requireUser();
   return (
     <div className="flex items-center gap-3">
-      <span className="hidden max-w-40 truncate text-sm text-muted lg:inline" title={user.email}>
-        {user.email}
+      <span className="hidden max-w-40 truncate text-sm text-muted lg:inline" title={user.username}>
+        {user.username}
       </span>
       <form action={logout}>
         <button

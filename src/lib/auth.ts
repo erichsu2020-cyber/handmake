@@ -11,7 +11,7 @@ import { User } from "@/models/User";
 
 // 所有「目前是誰登入」的判斷都集中在這裡；頁面和 API 都要自己呼叫，不能只靠 proxy
 
-export type CurrentUser = { id: string; email: string };
+export type CurrentUser = { id: string; username: string };
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -50,8 +50,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   await connectDB();
   const session = await Session.findOne({ tokenHash: hashToken(token), expiresAt: { $gt: new Date() } }).lean();
   if (!session) return null;
-  const user = await User.findById(session.userId, { email: 1 }).lean();
-  return user ? { id: String(user._id), email: user.email } : null;
+  const user = await User.findById(session.userId, { username: 1 }).lean();
+  return user ? { id: String(user._id), username: user.username } : null;
 });
 
 // 頁面用：沒登入就導到登入頁

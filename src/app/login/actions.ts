@@ -10,22 +10,22 @@ import { User } from "@/models/User";
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
 
-// 帳號不存在時也算一次密碼，讓回應時間一樣，不會被試出哪些 email 有帳號
+// 帳號不存在時也算一次密碼，讓回應時間一樣，不會被試出哪些帳號存在
 const dummyHash = hashPassword("handmake-dummy-password");
 
-export type LoginState = { error?: string; email?: string };
+export type LoginState = { error?: string; username?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const username = String(formData.get("username") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  if (!email || !password) return { error: "請輸入 email 和密碼", email };
+  if (!username || !password) return { error: "請輸入帳號和密碼", username };
 
   await connectDB();
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ username });
 
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
     const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
-    return { error: `密碼錯誤太多次，請 ${minutes} 分鐘後再試`, email };
+    return { error: `密碼錯誤太多次，請 ${minutes} 分鐘後再試`, username };
   }
 
   const ok = await verifyPassword(password, user?.passwordHash ?? (await dummyHash));
@@ -39,8 +39,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
           : { $set: { failedLogins: failed } },
       );
     }
-    // 不說是 email 還是密碼錯，避免被用來猜帳號
-    return { error: "Email 或密碼不正確", email };
+    // 不說是帳號還是密碼錯，避免被用來猜帳號
+    return { error: "帳號或密碼不正確", username };
   }
 
   await User.updateOne({ _id: user._id }, { $set: { failedLogins: 0 }, $unset: { lockedUntil: "" } });
