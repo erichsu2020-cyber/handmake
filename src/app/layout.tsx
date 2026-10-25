@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
+import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,26 +26,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <header className="border-b border-zinc-200 dark:border-zinc-800">
-          <nav className="mx-auto flex w-full max-w-4xl items-center gap-6 px-4 py-3">
-            <Link href="/" className="font-semibold">
-              Handmake
-            </Link>
-            <Link href="/" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
-              產生
-            </Link>
-            <Link href="/history" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
-              歷史紀錄
-            </Link>
-            <Link href="/design" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
-              設計 3D 圖
-            </Link>
-            <Link href="/design/history" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
-              設計紀錄
-            </Link>
-          </nav>
-        </header>
+        <SiteHeader />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );
