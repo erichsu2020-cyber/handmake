@@ -139,9 +139,17 @@ export default function Home() {
           <h2 className="text-xl font-semibold">3D 模型圖</h2>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={result.outputImageUrl} alt="產生的 3D 模型圖" className="w-full rounded-lg" />
-          <ModelPanel key={result.id} generationId={result.id} />
         </section>
       )}
+
+      {/* 第 2 步的設定一開始就顯示，可以先選好；第 1 步完成後才能送出 */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-xl font-semibold">第 2 步：轉成 3D 列印檔</h2>
+        {!result && (
+          <p className="text-sm text-zinc-500">可以先選好下面的設定，完成第 1 步後再按產生。</p>
+        )}
+        <ModelPanel generationId={result?.id} />
+      </section>
     </main>
   );
 }

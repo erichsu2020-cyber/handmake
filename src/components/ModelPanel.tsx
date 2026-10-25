@@ -84,7 +84,8 @@ export default function ModelPanel({
   generationId,
   initialModel3d,
 }: {
-  generationId: string;
+  // 首頁還沒完成第 1 步時沒有 id：設定可以先選，但不能送出
+  generationId?: string;
   initialModel3d?: Model3dView;
 }) {
   const [model3d, setModel3d] = useState<Model3dView | null>(initialModel3d ?? null);
@@ -92,6 +93,14 @@ export default function ModelPanel({
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef(false);
   const url = `/api/generations/${generationId}/model3d`;
+
+  // 換了一張新圖：清掉上一張的結果，但保留已選好的設定
+  const [shownId, setShownId] = useState(generationId);
+  if (shownId !== generationId) {
+    setShownId(generationId);
+    setModel3d(initialModel3d ?? null);
+    setError(null);
+  }
 
   const set = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) =>
     setSettings((prev) => {
@@ -347,10 +356,10 @@ export default function ModelPanel({
       <button
         type="button"
         onClick={handleStart}
-        disabled={busy}
+        disabled={busy || !generationId}
         className="h-12 rounded-full bg-foreground px-6 font-medium text-background transition-opacity disabled:opacity-50"
       >
-        {busy ? "處理中…" : STEP_BUTTON[step]}
+        {!generationId ? "請先完成第 1 步" : busy ? "處理中…" : STEP_BUTTON[step]}
       </button>
 
       {error && <p className="rounded-lg bg-red-100 p-3 text-red-700">{error}</p>}
