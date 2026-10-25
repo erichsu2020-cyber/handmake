@@ -9,7 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
+    "mongoose": "^9.11.4",
     "next": "16.4.3",
+    "openai": "^7.43.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
