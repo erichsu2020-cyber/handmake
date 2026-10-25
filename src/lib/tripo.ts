@@ -48,13 +48,14 @@ export async function createImageToModelTask(imageUrl: string) {
   return data.task_id;
 }
 
-// 轉成 STL：底部壓平、原點移到底部中心，放進切片軟體比較好擺
-export async function createConvertToStlTask(modelTaskId: string) {
+// 轉成 STL：減面到 faceLimit、底部壓平、原點移到底部中心，放進切片軟體比較好擺
+export async function createConvertToStlTask(modelTaskId: string, faceLimit: number) {
   const data = await tripoFetch<{ task_id: string }>("/models/convert", {
     method: "POST",
     body: JSON.stringify({
       input: modelTaskId,
       format: "STL",
+      face_limit: faceLimit,
       flatten_bottom: true,
       pivot_to_center_bottom: true,
     }),

@@ -17,10 +17,18 @@ const model3dSchema = new Schema(
       required: true,
     },
     progress: { type: Number, default: 0 },
+    // 使用者選擇的設定
+    heightMm: { type: Number, required: true },
+    faceLimit: { type: Number, required: true },
     modelTaskId: { type: String },
     convertTaskId: { type: String },
     stlUrl: { type: String },
     stlPathname: { type: String },
+    // 完成後的實際結果
+    dimensionsMm: { type: [Number], default: undefined },
+    triangles: { type: Number },
+    fileSizeBytes: { type: Number },
+    uploadAttempts: { type: Number, default: 0 },
     error: { type: String },
   },
   { _id: false },
