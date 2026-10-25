@@ -36,6 +36,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/history" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
               歷史紀錄
             </Link>
+            <Link href="/design" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
+              設計 3D 圖
+            </Link>
+            <Link href="/design/history" className="text-sm text-zinc-600 hover:text-foreground dark:text-zinc-400">
+              設計紀錄
+            </Link>
           </nav>
         </header>
         {children}
