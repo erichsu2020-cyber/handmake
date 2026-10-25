@@ -1,40 +1,71 @@
 import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
-import { FORMATS, MODEL_VERSIONS } from "@/lib/print-settings";
+import { APPEARANCE_MATERIALS, FORMATS, MODEL_VERSIONS } from "@/lib/print-settings";
 import { IMAGE_QUALITIES, STYLE_PRESETS } from "@/lib/image-settings";
 
-// 第 2 步：Tripo3D 圖片轉 3D → 轉檔 → 縮放 → 上傳 Vercel Blob
+// 第 2 步：Tripo3D 產生模型 →（外觀材質）→ 轉檔 → 本機處理 → 上傳 Vercel Blob
 const model3dSchema = new Schema(
   {
     status: {
       type: String,
-      enum: ["generating", "converting", "uploading", "done", "failed"],
+      // uploading：正在把 Tripo 的檔案存到 Blob；processing：本機縮放、切開、空心化
+      enum: ["generating", "texturing", "converting", "uploading", "processing", "done", "failed"],
       required: true,
     },
     progress: { type: Number, default: 0 },
 
-    // 產生模型的設定（改了要重新產生）
+    // 1. 產生模型
     modelVersion: { type: String, enum: MODEL_VERSIONS.map((v) => v.value), required: true },
     geometryQuality: { type: String, enum: ["standard", "detailed"], required: true },
     alignToImage: { type: Boolean, required: true },
     imageAutofix: { type: Boolean, required: true },
     generateParts: { type: Boolean, required: true },
     color: { type: Boolean, required: true },
-
-    // 轉檔設定（改了只要重新轉檔）
-    heightMm: { type: Number, required: true },
+    // 2. 外觀材質
+    appearance: { type: String, enum: APPEARANCE_MATERIALS.map((m) => m.value), default: "none" },
+    // 3. 轉檔
     faceLimit: { type: Number, required: true },
     format: { type: String, enum: FORMATS.map((f) => f.value), required: true },
     flattenBottom: { type: Boolean, required: true },
+    // 4. 本機處理
+    sizeMode: { type: String, enum: ["axis", "fit", "xyz"], default: "axis" },
+    sizeAxis: { type: String, enum: ["height", "width", "depth"], default: "height" },
+    sizeMm: { type: Number },
+    bedX: { type: Number },
+    bedY: { type: Number },
+    bedZ: { type: Number },
+    sizeX: { type: Number },
+    sizeY: { type: Number },
+    sizeZ: { type: Number },
+    trimBottomMm: { type: Number, default: 0 },
+    cutAtPercent: { type: Number, default: 0 },
+    hollowWallMm: { type: Number, default: 0 },
+    drainHole: { type: Boolean, default: false },
 
+    // Tripo 任務
     modelTaskId: { type: String },
+    modelReady: { type: Boolean, default: false },
+    textureTaskId: { type: String },
+    textureReady: { type: Boolean, default: false },
     convertTaskId: { type: String },
+
+    // Tripo 轉出來的原始檔（存起來，之後改尺寸／切開／空心化不用再扣點數）
+    rawFileUrl: { type: String },
+    rawFilePathname: { type: String },
+    processingClaimedAt: { type: Date },
 
     // 完成後的結果
     fileUrl: { type: String },
     filePathname: { type: String },
     dimensionsMm: { type: [Number], default: undefined },
     triangles: { type: Number },
+    pieces: { type: Number },
     fileSizeBytes: { type: Number },
+    stats: {
+      volumeMm3: Number,
+      surfaceAreaMm2: Number,
+      overhangAreaMm2: Number,
+      overhangVolumeMm3: Number,
+    },
 
     uploadAttempts: { type: Number, default: 0 },
     error: { type: String },

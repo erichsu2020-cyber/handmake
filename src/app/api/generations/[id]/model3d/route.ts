@@ -3,13 +3,24 @@ import { put } from "@vercel/blob";
 import { connectDB } from "@/lib/mongodb";
 import { toModel3dView } from "@/lib/generation-view";
 import { processModelFile } from "@/lib/model-file";
-import { FORMATS, parseModelSettings, sameGenerateOptions } from "@/lib/print-settings";
-import { createConvertTask, createImageToModelTask, getTask } from "@/lib/tripo";
+import {
+  APPEARANCE_MATERIALS,
+  FORMATS,
+  parseModelSettings,
+  sameConvertOptions,
+  sameGenerateOptions,
+  sameTextureOptions,
+  type ModelSettings,
+} from "@/lib/print-settings";
+import { createConvertTask, createImageToModelTask, createTextureTask, getTask } from "@/lib/tripo";
 import { Generation, type Model3dDoc } from "@/models/Generation";
 
 type Ctx = RouteContext<"/api/generations/[id]/model3d">;
 
 const MAX_UPLOAD_ATTEMPTS = 3;
+// 處理中的請求如果中斷（例如伺服器重啟），超過這個時間就允許重新處理
+const PROCESSING_STALE_MS = 3 * 60 * 1000;
+const BUSY = ["generating", "texturing", "converting", "uploading", "processing"];
 
 async function findGeneration(ctx: Ctx) {
   const { id } = await ctx.params;
@@ -27,7 +38,11 @@ async function currentView(id: Types.ObjectId) {
   return toModel3dView(updated?.model3d);
 }
 
-// 開始：用使用者選的設定，把第 1 步的圖片轉成 3D 列印檔
+const needsTexture = (s: Pick<ModelSettings, "color" | "appearance">) => s.color && s.appearance !== "none";
+const texturePrompt = (s: Pick<ModelSettings, "appearance">) =>
+  APPEARANCE_MATERIALS.find((m) => m.value === s.appearance)?.prompt ?? "";
+
+// 開始：依照改了哪些設定，從最省點數的步驟開始重做
 export async function POST(request: Request, ctx: Ctx) {
   const settings = parseModelSettings(await request.json().catch(() => null));
   if (typeof settings === "string") {
@@ -37,42 +52,53 @@ export async function POST(request: Request, ctx: Ctx) {
   const generation = await findGeneration(ctx);
   if (!generation) return Response.json({ error: "找不到這筆資料" }, { status: 404 });
 
-  const previous = generation.model3d;
-  if (previous && ["generating", "converting", "uploading"].includes(previous.status)) {
-    return Response.json({ error: "這張圖正在轉換中，請等它完成" }, { status: 409 });
+  const prev = generation.model3d;
+  if (prev && BUSY.includes(prev.status)) {
+    return Response.json({ error: "這張圖正在處理中，請等它完成" }, { status: 409 });
   }
 
-  // 之前的 3D 模型已經產生成功（有轉檔任務），而且產生設定沒變 → 只要重新轉檔，省下產生模型的點數
-  const reuseModelTaskId =
-    previous?.modelTaskId && previous.convertTaskId && sameGenerateOptions(previous, settings)
-      ? previous.modelTaskId
-      : null;
+  // 資料庫的欄位可能是 null，比對設定時當成「沒有設定」
+  const prevSettings = (prev ?? {}) as unknown as Partial<ModelSettings>;
+  // 舊資料沒有 modelReady，有轉檔任務就代表模型產生成功過
+  const modelReady = !!prev?.modelTaskId && (prev.modelReady || !!prev.convertTaskId);
+  const reuseModel = modelReady && sameGenerateOptions(prevSettings, settings);
+  const reuseTexture =
+    reuseModel && (!needsTexture(settings) || (!!prev!.textureReady && sameTextureOptions(prevSettings, settings)));
+  const reuseRaw = reuseTexture && !!prev!.rawFileUrl && sameConvertOptions(prevSettings, settings);
+
+  const base = { ...settings, progress: 0, uploadAttempts: 0 };
+  const kept = {
+    modelTaskId: reuseModel ? prev!.modelTaskId : undefined,
+    modelReady: reuseModel,
+    textureTaskId: reuseTexture && needsTexture(settings) ? prev!.textureTaskId : undefined,
+    textureReady: reuseTexture && needsTexture(settings),
+  };
 
   try {
-    if (reuseModelTaskId) {
+    if (reuseRaw) {
+      // 只改了尺寸、切開、空心化 → 用存起來的原始檔重新處理，不扣點數
       generation.model3d = {
-        status: "converting",
-        progress: 0,
-        ...settings,
-        uploadAttempts: 0,
-        modelTaskId: reuseModelTaskId,
+        ...base,
+        ...kept,
+        status: "processing",
+        convertTaskId: prev!.convertTaskId,
+        rawFileUrl: prev!.rawFileUrl,
+        rawFilePathname: prev!.rawFilePathname,
       };
-      await generation.save();
-      await startConvert(generation._id, reuseModelTaskId, generation.model3d);
+    } else if (reuseTexture) {
+      const source = needsTexture(settings) ? kept.textureTaskId! : kept.modelTaskId!;
+      const convertTaskId = await createConvertTask(source, settings);
+      generation.model3d = { ...base, ...kept, status: "converting", convertTaskId };
+    } else if (reuseModel) {
+      const textureTaskId = await createTextureTask(kept.modelTaskId!, texturePrompt(settings));
+      generation.model3d = { ...base, ...kept, status: "texturing", textureTaskId, textureReady: false };
     } else {
       const modelTaskId = await createImageToModelTask(generation.outputImageUrl, settings);
-      generation.model3d = {
-        status: "generating",
-        progress: 0,
-        ...settings,
-        uploadAttempts: 0,
-        modelTaskId,
-      };
-      await generation.save();
+      generation.model3d = { ...base, status: "generating", modelTaskId, modelReady: false, textureReady: false };
     }
+    await generation.save();
   } catch (error) {
     console.error("建立 Tripo3D 任務失敗", error);
-    if (generation.model3d) await markFailed(generation._id, errorMessage(error));
     return Response.json({ error: errorMessage(error) }, { status: 502 });
   }
 
@@ -87,42 +113,33 @@ export async function GET(_request: Request, ctx: Ctx) {
   }
 
   const id = generation._id;
-  const model3d = generation.model3d;
+  const m = generation.model3d;
 
   try {
-    if (model3d.status === "generating" && model3d.modelTaskId) {
-      const task = await getTask(model3d.modelTaskId);
-
-      if (task.status === "failed" || task.status === "cancelled") {
-        await markFailed(id, `3D 模型產生失敗：${task.error_message ?? task.status}`);
-      } else if (task.status === "success") {
-        // 先搶到「轉檔」狀態再建立任務，避免同時兩個請求各建一次
-        const claimed = await Generation.updateOne(
-          { _id: id, "model3d.status": "generating" },
-          { $set: { "model3d.status": "converting", "model3d.progress": 0 } },
-        );
-        if (claimed.modifiedCount === 1) {
-          await startConvert(id, model3d.modelTaskId, model3d);
+    if (m.status === "generating" && m.modelTaskId) {
+      await advanceTripoTask(id, m.modelTaskId, "generating", "3D 模型產生失敗", async () => {
+        await Generation.updateOne({ _id: id }, { $set: { "model3d.modelReady": true } });
+        if (needsTexture(m as ModelSettings)) {
+          const textureTaskId = await createTextureTask(m.modelTaskId!, texturePrompt(m as ModelSettings));
+          await setStage(id, "texturing", { "model3d.textureTaskId": textureTaskId });
+        } else {
+          const convertTaskId = await createConvertTask(m.modelTaskId!, m);
+          await setStage(id, "converting", { "model3d.convertTaskId": convertTaskId });
         }
-      } else {
-        await Generation.updateOne({ _id: id }, { $set: { "model3d.progress": task.progress } });
-      }
-    } else if (model3d.status === "converting" && model3d.convertTaskId) {
-      const task = await getTask(model3d.convertTaskId);
-
-      if (task.status === "failed" || task.status === "cancelled") {
-        await markFailed(id, `轉檔失敗：${task.error_message ?? task.status}`);
-      } else if (task.status === "success" && task.output?.model_url) {
-        const claimed = await Generation.updateOne(
-          { _id: id, "model3d.status": "converting" },
-          { $set: { "model3d.status": "uploading" } },
-        );
-        if (claimed.modifiedCount === 1) {
-          await uploadModelFile(id, task.output.model_url, model3d);
-        }
-      } else {
-        await Generation.updateOne({ _id: id }, { $set: { "model3d.progress": task.progress } });
-      }
+      });
+    } else if (m.status === "texturing" && m.textureTaskId) {
+      await advanceTripoTask(id, m.textureTaskId, "texturing", "上外觀材質失敗", async () => {
+        await Generation.updateOne({ _id: id }, { $set: { "model3d.textureReady": true } });
+        const convertTaskId = await createConvertTask(m.textureTaskId!, m);
+        await setStage(id, "converting", { "model3d.convertTaskId": convertTaskId });
+      });
+    } else if (m.status === "converting" && m.convertTaskId) {
+      await advanceTripoTask(id, m.convertTaskId, "converting", "轉檔失敗", async (task) => {
+        await Generation.updateOne({ _id: id }, { $set: { "model3d.status": "uploading" } });
+        await saveRawFile(id, task.output!.model_url!, m);
+      });
+    } else if (m.status === "processing") {
+      await processFile(id, m);
     }
   } catch (error) {
     console.error("更新 3D 模型進度失敗", error);
@@ -132,23 +149,86 @@ export async function GET(_request: Request, ctx: Ctx) {
   return Response.json({ model3d: await currentView(id) });
 }
 
-async function startConvert(id: Types.ObjectId, modelTaskId: string, model3d: Model3dDoc) {
-  const convertTaskId = await createConvertTask(modelTaskId, model3d);
-  await Generation.updateOne({ _id: id }, { $set: { "model3d.convertTaskId": convertTaskId } });
+// 查 Tripo 任務：失敗就標記失敗；成功就先「搶」到下一步（避免兩個請求同時建任務），再執行 onSuccess
+async function advanceTripoTask(
+  id: Types.ObjectId,
+  taskId: string,
+  stage: "generating" | "texturing" | "converting",
+  failMessage: string,
+  onSuccess: (task: Awaited<ReturnType<typeof getTask>>) => Promise<void>,
+) {
+  const task = await getTask(taskId);
+
+  if (task.status === "failed" || task.status === "cancelled") {
+    await markFailed(id, `${failMessage}：${task.error_message ?? task.status}`);
+  } else if (task.status === "success") {
+    const claimed = await Generation.updateOne(
+      { _id: id, "model3d.status": stage },
+      { $set: { "model3d.status": `${stage}:claimed` } },
+    );
+    if (claimed.modifiedCount === 1) await onSuccess(task);
+  } else {
+    await Generation.updateOne({ _id: id }, { $set: { "model3d.progress": task.progress } });
+  }
 }
 
-// Tripo 的下載網址只有幾分鐘有效，所以下載後縮放到指定高度，再存到自己的 Vercel Blob
-async function uploadModelFile(id: Types.ObjectId, modelUrl: string, model3d: Model3dDoc) {
-  const format = FORMATS.find((f) => f.value === model3d.format)!;
+async function setStage(id: Types.ObjectId, status: string, extra: Record<string, unknown>) {
+  await Generation.updateOne(
+    { _id: id },
+    { $set: { "model3d.status": status, "model3d.progress": 0, ...extra } },
+  );
+}
 
+// Tripo 的下載網址只有幾分鐘有效，所以先把原始檔存到自己的 Vercel Blob
+async function saveRawFile(id: Types.ObjectId, modelUrl: string, m: Model3dDoc) {
+  const format = FORMATS.find((f) => f.value === m.format)!;
   try {
     const res = await fetch(modelUrl, { cache: "no-store" });
     if (!res.ok) throw new Error(`下載模型檔失敗 (${res.status})`);
+    const blob = await put(`handmake/models/raw/tripo.${format.ext === "obj" ? "zip" : format.ext}`, Buffer.from(await res.arrayBuffer()), {
+      access: "public",
+      addRandomSuffix: true,
+    });
+    await setStage(id, "processing", {
+      "model3d.rawFileUrl": blob.url,
+      "model3d.rawFilePathname": blob.pathname,
+    });
+  } catch (error) {
+    // 退回「轉檔」狀態讓下一次輪詢重試（下載網址過期前），超過次數就放棄
+    console.error("儲存原始檔失敗", error);
+    const updated = await Generation.findOneAndUpdate(
+      { _id: id },
+      { $set: { "model3d.status": "converting" }, $inc: { "model3d.uploadAttempts": 1 } },
+      { new: true },
+    ).lean();
+    if ((updated?.model3d?.uploadAttempts ?? 0) >= MAX_UPLOAD_ATTEMPTS) {
+      await markFailed(id, `儲存模型檔失敗：${errorMessage(error)}`);
+    }
+  }
+}
 
-    const { buffer, info } = processModelFile(
+// 本機處理：縮放尺寸、切底部、空心化、切開（不呼叫 Tripo、不扣點數）
+async function processFile(id: Types.ObjectId, m: Model3dDoc) {
+  const stale = new Date(Date.now() - PROCESSING_STALE_MS);
+  const claimed = await Generation.updateOne(
+    {
+      _id: id,
+      "model3d.status": "processing",
+      $or: [{ "model3d.processingClaimedAt": null }, { "model3d.processingClaimedAt": { $lt: stale } }],
+    },
+    { $set: { "model3d.processingClaimedAt": new Date(), "model3d.progress": 50 } },
+  );
+  if (claimed.modifiedCount !== 1 || !m.rawFileUrl) return;
+
+  const format = FORMATS.find((f) => f.value === m.format)!;
+  try {
+    const res = await fetch(m.rawFileUrl, { cache: "no-store" });
+    if (!res.ok) throw new Error(`讀取原始檔失敗 (${res.status})`);
+
+    const { buffer, info } = await processModelFile(
       format.value,
       Buffer.from(await res.arrayBuffer()),
-      model3d.heightMm,
+      m as unknown as ModelSettings,
     );
     const blob = await put(`handmake/models/model.${format.ext}`, buffer, {
       access: "public",
@@ -166,21 +246,17 @@ async function uploadModelFile(id: Types.ObjectId, modelUrl: string, model3d: Mo
           "model3d.filePathname": blob.pathname,
           "model3d.dimensionsMm": info.dimensionsMm,
           "model3d.triangles": info.triangles,
+          "model3d.pieces": info.pieces,
+          "model3d.stats": info.stats,
           "model3d.fileSizeBytes": buffer.length,
         },
+        $unset: { "model3d.processingClaimedAt": "", "model3d.error": "" },
       },
     );
   } catch (error) {
-    // 退回「轉檔」狀態讓下一次輪詢重試（下載網址過期前），超過次數就放棄
     console.error("處理模型檔失敗", error);
-    const updated = await Generation.findOneAndUpdate(
-      { _id: id },
-      { $set: { "model3d.status": "converting" }, $inc: { "model3d.uploadAttempts": 1 } },
-      { new: true },
-    ).lean();
-    if ((updated?.model3d?.uploadAttempts ?? 0) >= MAX_UPLOAD_ATTEMPTS) {
-      await markFailed(id, `處理模型檔失敗：${errorMessage(error)}`);
-    }
+    await Generation.updateOne({ _id: id }, { $unset: { "model3d.processingClaimedAt": "" } });
+    await markFailed(id, errorMessage(error));
   }
 }
 

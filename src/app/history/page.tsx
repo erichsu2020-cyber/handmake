@@ -9,7 +9,9 @@ export const metadata = { title: "歷史紀錄 | Handmake" };
 const STATUS_LABEL = {
   generating: "產生中",
   converting: "轉檔中",
-  uploading: "上傳中",
+  uploading: "儲存中",
+  texturing: "上材質中",
+  processing: "處理中",
   done: "已完成",
   failed: "失敗",
 } as const;

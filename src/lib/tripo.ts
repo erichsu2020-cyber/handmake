@@ -57,15 +57,29 @@ export async function createImageToModelTask(imageUrl: string, options: Generate
   return data.task_id;
 }
 
+// 外觀材質：用文字描述重新上貼圖（實測 10 點）
+export async function createTextureTask(modelTaskId: string, prompt: string) {
+  const data = await tripoFetch<{ task_id: string }>("/models/texture", {
+    method: "POST",
+    body: JSON.stringify({
+      original_model_task_id: modelTaskId,
+      texture_prompt: { text: prompt },
+      pbr: false,
+    }),
+  });
+  return data.task_id;
+}
+
 // 轉檔：減面、底部壓平、原點移到底部中心；彩色 OBJ 會把顏色存在頂點上
+// sourceTaskId 是產生模型或上貼圖的任務
 export async function createConvertTask(
-  modelTaskId: string,
+  sourceTaskId: string,
   options: ConvertOptions & { color: boolean },
 ) {
   const data = await tripoFetch<{ task_id: string }>("/models/convert", {
     method: "POST",
     body: JSON.stringify({
-      input: modelTaskId,
+      input: sourceTaskId,
       format: options.format,
       face_limit: options.faceLimit,
       flatten_bottom: options.flattenBottom,
