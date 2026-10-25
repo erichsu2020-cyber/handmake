@@ -10,6 +10,7 @@ import {
   DESIGN_STYLES,
   DESIGN_VIEWS,
 } from "@/lib/design-settings";
+import { requireUser } from "@/lib/auth";
 import { listDesigns } from "@/lib/designs";
 
 export const metadata = { title: "設計紀錄 | Handmake" };
@@ -36,7 +37,8 @@ export default function DesignHistoryPage() {
 
 async function DesignList() {
   await connection(); // 每次都讀最新資料
-  const designs = await listDesigns();
+  const user = await requireUser();
+  const designs = await listDesigns(user.id);
 
   if (designs.length === 0) {
     return <p className="text-zinc-500">還沒有任何設計，先到「設計 3D 圖」產生一張吧。</p>;

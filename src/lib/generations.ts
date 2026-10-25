@@ -15,15 +15,16 @@ const PROJECTION = {
   model3d: 1,
 };
 
-export async function listGenerations(limit = 50) {
+// 一律帶 userId：只查得到該帳號自己的紀錄
+export async function listGenerations(userId: string, limit = 50) {
   await connectDB();
-  const docs = await Generation.find({}, PROJECTION).sort({ createdAt: -1 }).limit(limit).lean();
+  const docs = await Generation.find({ userId }, PROJECTION).sort({ createdAt: -1 }).limit(limit).lean();
   return docs.map(toGenerationView);
 }
 
-export async function getGeneration(id: string) {
+export async function getGeneration(id: string, userId: string) {
   if (!isValidObjectId(id)) return null;
   await connectDB();
-  const doc = await Generation.findById(id, PROJECTION).lean();
+  const doc = await Generation.findOne({ _id: id, userId }, PROJECTION).lean();
   return doc ? toGenerationView(doc) : null;
 }

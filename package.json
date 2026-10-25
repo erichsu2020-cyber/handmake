@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "user": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user.mts"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.2",
@@ -17,6 +18,7 @@
     "openai": "^7.43.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
     "three": "^0.186.1"
   },
   "devDependencies": {

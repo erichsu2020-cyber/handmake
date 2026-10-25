@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import HistoryActions from "@/components/HistoryActions";
 import StorageCleanup from "@/components/StorageCleanup";
+import { requireUser } from "@/lib/auth";
 import { listGenerations } from "@/lib/generations";
 import { STYLE_PRESETS } from "@/lib/image-settings";
 
@@ -32,7 +33,8 @@ export default function HistoryPage() {
 
 async function HistoryList() {
   await connection(); // 每次都讀最新資料
-  const generations = await listGenerations();
+  const user = await requireUser();
+  const generations = await listGenerations(user.id);
 
   if (generations.length === 0) {
     return <p className="text-zinc-500">還沒有任何紀錄，先到首頁產生一個吧。</p>;

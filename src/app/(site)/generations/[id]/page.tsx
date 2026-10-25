@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import ModelPanel from "@/components/ModelPanel";
+import { requireUser } from "@/lib/auth";
 import { getGeneration } from "@/lib/generations";
 
 export default function GenerationPage({ params }: PageProps<"/generations/[id]">) {
@@ -21,7 +22,8 @@ export default function GenerationPage({ params }: PageProps<"/generations/[id]"
 async function GenerationDetail({ params }: { params: PageProps<"/generations/[id]">["params"] }) {
   await connection(); // 每次都讀最新資料
   const { id } = await params;
-  const generation = await getGeneration(id);
+  const user = await requireUser();
+  const generation = await getGeneration(id, user.id);
   if (!generation) notFound();
   // 最早期的資料把圖片存在資料庫裡，沒有網址，無法送去 Tripo3D
   if (!generation.outputImageUrl) {

@@ -1,7 +1,9 @@
+import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { deleteOrphans, findOrphans } from "@/lib/blob-cleanup";
 
 // GET：預覽有哪些沒用到的檔案；POST：實際刪除
 export async function GET() {
+  if (!(await getCurrentUser())) return unauthorized();
   try {
     const { totalFiles, totalBytes, orphans, orphanBytes } = await findOrphans();
     // 依資料夾分組，讓使用者知道是哪類檔案
@@ -20,6 +22,7 @@ export async function GET() {
 }
 
 export async function POST() {
+  if (!(await getCurrentUser())) return unauthorized();
   try {
     return Response.json(await deleteOrphans());
   } catch (error) {

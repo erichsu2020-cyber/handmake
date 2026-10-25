@@ -77,6 +77,8 @@ const model3dSchema = new Schema(
 
 const generationSchema = new Schema(
   {
+    // 建立這筆紀錄的帳號；每個人只看得到自己的紀錄
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     // text：只輸入文字；image：上傳圖片（可附加文字說明）
     mode: { type: String, enum: ["text", "image"], required: true },
     prompt: { type: String, default: "" },

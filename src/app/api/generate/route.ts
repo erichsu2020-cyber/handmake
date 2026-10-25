@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { put } from "@vercel/blob";
+import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { toGenerationView } from "@/lib/generation-view";
 import {
@@ -22,6 +23,9 @@ const STYLE_PROMPT =
   "Solid, watertight-looking shapes with clear silhouettes, suitable as input for image-to-3D reconstruction and 3D printing.";
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
+
   for (const key of ["OPENAI_API_KEY", "BLOB_READ_WRITE_TOKEN"]) {
     if (!process.env[key]) {
       return Response.json(
@@ -113,6 +117,7 @@ export async function POST(request: Request) {
   try {
     await connectDB();
     const doc = await Generation.create({
+      userId: user.id,
       mode: file ? "image" : "text",
       prompt,
       style: style.value,

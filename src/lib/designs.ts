@@ -36,8 +36,9 @@ export function toDesignView(doc: any): DesignView {
   };
 }
 
-export async function listDesigns(limit = 50) {
+// 只查得到該帳號自己的紀錄
+export async function listDesigns(userId: string, limit = 50) {
   await connectDB();
-  const docs = await DesignImage.find().sort({ createdAt: -1 }).limit(limit).lean();
+  const docs = await DesignImage.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean();
   return docs.map(toDesignView);
 }

@@ -12,6 +12,8 @@ const imageSchema = new Schema(
 
 const designImageSchema = new Schema(
   {
+    // 建立這筆紀錄的帳號；每個人只看得到自己的紀錄
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     // 使用者填寫的表單內容
     subject: { type: String, required: true },
     details: { type: String, default: "" },

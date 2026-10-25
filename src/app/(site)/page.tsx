@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { requireUser } from "@/lib/auth";
 import { listGenerations } from "@/lib/generations";
 
 const STEPS = [
@@ -188,7 +189,8 @@ function Features() {
 // 從歷史紀錄挑最近完成的作品展示；沒有作品時整區不顯示
 async function RecentWorks() {
   await connection();
-  const works = (await listGenerations(30)).filter((g) => g.outputImageUrl && g.model3d?.status === "done").slice(0, 4);
+  const user = await requireUser();
+  const works = (await listGenerations(user.id, 30)).filter((g) => g.outputImageUrl && g.model3d?.status === "done").slice(0, 4);
   if (works.length === 0) return null;
 
   return (

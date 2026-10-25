@@ -1,6 +1,7 @@
 import { isValidObjectId, type Types } from "mongoose";
 import { put } from "@vercel/blob";
 import { deleteBlobs } from "@/lib/blob-cleanup";
+import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { toModel3dView } from "@/lib/generation-view";
 import { processModelFile } from "@/lib/model-file";
@@ -23,11 +24,14 @@ const MAX_UPLOAD_ATTEMPTS = 3;
 const PROCESSING_STALE_MS = 3 * 60 * 1000;
 const BUSY = ["generating", "texturing", "converting", "uploading", "processing"];
 
+// 只找得到自己的紀錄；沒登入回傳 "unauthorized"
 async function findGeneration(ctx: Ctx) {
+  const user = await getCurrentUser();
+  if (!user) return "unauthorized" as const;
   const { id } = await ctx.params;
   if (!isValidObjectId(id)) return null;
   await connectDB();
-  return Generation.findById(id);
+  return Generation.findOne({ _id: id, userId: user.id });
 }
 
 function errorMessage(error: unknown) {
@@ -51,6 +55,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   const generation = await findGeneration(ctx);
+  if (generation === "unauthorized") return unauthorized();
   if (!generation) return Response.json({ error: "找不到這筆資料" }, { status: 404 });
 
   const prev = generation.model3d;
@@ -116,6 +121,7 @@ export async function POST(request: Request, ctx: Ctx) {
 // 查詢進度：前端輪詢這支 API，每次呼叫會推進到下一個階段
 export async function GET(_request: Request, ctx: Ctx) {
   const generation = await findGeneration(ctx);
+  if (generation === "unauthorized") return unauthorized();
   if (!generation?.model3d) {
     return Response.json({ error: "還沒開始產生 3D 模型" }, { status: 404 });
   }
