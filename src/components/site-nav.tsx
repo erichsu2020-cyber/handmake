@@ -6,6 +6,7 @@ export const NAV_LINKS = [
   { href: "/design", label: "設計 3D 圖" },
   { href: "/create", label: "製作模型" },
   { href: "/bambu", label: "Bambu 設定" },
+  { href: "/print-check", label: "AI 列印檢查" },
   { href: "/history", label: "歷史紀錄" },
   { href: "/design/history", label: "設計紀錄" },
   { href: "/drawings", label: "我的畫作" },
