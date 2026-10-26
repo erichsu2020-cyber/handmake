@@ -49,7 +49,7 @@ async function DesignList() {
       {designs.map((d) => (
         <li key={d.id} className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold">{d.subject}</h2>
+            <h2 className="text-lg font-semibold">{d.subject || "（依參考圖設計）"}</h2>
             <span className="text-sm text-zinc-500">
               {new Date(d.createdAt).toLocaleString("zh-TW", { dateStyle: "short", timeStyle: "short" })}
             </span>

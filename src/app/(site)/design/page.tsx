@@ -45,8 +45,8 @@ export default function DesignPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!design.subject.trim()) {
-      setError("請填寫主題");
+    if (!design.subject.trim() && !reference) {
+      setError("請填寫主題，或上傳一張參考圖");
       return;
     }
 
@@ -99,7 +99,7 @@ export default function DesignPage() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <Section title="1. 主題與描述">
-          <Field label="主題（必填）">
+          <Field label={reference ? "主題（有參考圖時可不填）" : "主題（必填）"}>
             <input
               value={design.subject}
               onChange={(e) => set("subject", e.target.value)}
@@ -251,7 +251,9 @@ export default function DesignPage() {
         <details className="rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700">
           <summary className="cursor-pointer font-medium">查看送給 AI 的提示詞</summary>
           <p className="mt-3 whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">
-            {design.subject.trim() ? buildDesignPrompt(design, Boolean(reference)) : "請先填寫主題"}
+            {design.subject.trim() || reference
+              ? buildDesignPrompt(design, Boolean(reference))
+              : "請先填寫主題，或上傳一張參考圖"}
           </p>
         </details>
 

@@ -36,11 +36,11 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ error: "表單資料格式不正確" }, { status: 400 });
   }
-  const design = parseDesignInput(raw);
-  if (typeof design === "string") return Response.json({ error: design }, { status: 400 });
-
   // 參考圖由瀏覽器直接上傳到 Vercel Blob（見 /api/blob-upload），這裡只收網址
   const referenceImageUrl = String(formData.get("referenceUrl") ?? "").trim() || undefined;
+  const design = parseDesignInput(raw, Boolean(referenceImageUrl));
+  if (typeof design === "string") return Response.json({ error: design }, { status: 400 });
+
   let file: File | null = null;
   if (referenceImageUrl) {
     try {

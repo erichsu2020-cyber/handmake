@@ -15,7 +15,8 @@ const designImageSchema = new Schema(
     // 建立這筆紀錄的帳號；每個人只看得到自己的紀錄
     userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     // 使用者填寫的表單內容
-    subject: { type: String, required: true },
+    // 有參考圖時可以不填（空字串）
+    subject: { type: String, default: "" },
     details: { type: String, default: "" },
     style: { type: String, required: true },
     material: { type: String, required: true },

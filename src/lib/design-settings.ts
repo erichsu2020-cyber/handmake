@@ -3,6 +3,7 @@
 type Option = { value: string; label: string; prompt: string };
 
 export const DESIGN_STYLES: Option[] = [
+  { value: "auto", label: "不指定", prompt: "" },
   { value: "realistic", label: "寫實", prompt: "photorealistic 3D render with physically based materials" },
   { value: "cartoon", label: "卡通", prompt: "stylized cartoon 3D character style, like an animated film" },
   { value: "figurine", label: "公仔", prompt: "collectible vinyl figurine with smooth glossy surfaces" },
@@ -98,10 +99,12 @@ export const DEFAULT_DESIGN: DesignInput = {
 
 const find = (options: Option[], value: string) => options.find((o) => o.value === value);
 
-export function parseDesignInput(input: unknown): DesignInput | string {
+// hasReference：有參考圖時主題可以不填，AI 直接依圖片設計
+export function parseDesignInput(input: unknown, hasReference = false): DesignInput | string {
   const d = { ...DEFAULT_DESIGN, ...((input ?? {}) as Partial<DesignInput>) };
 
-  if (typeof d.subject !== "string" || !d.subject.trim()) return "請填寫主題";
+  if (typeof d.subject !== "string") return "主題格式不正確";
+  if (!d.subject.trim() && !hasReference) return "請填寫主題，或上傳一張參考圖";
   if (d.subject.length > 200) return "主題不能超過 200 字";
   for (const key of ["details", "avoid"] as const) {
     if (typeof d[key] !== "string") return `${key} 格式不正確`;
@@ -132,11 +135,13 @@ export function parseDesignInput(input: unknown): DesignInput | string {
 // 把表單組成英文提示詞（OpenAI 對英文的控制比較穩定，中文內容會原樣帶入）
 export function buildDesignPrompt(d: DesignInput, hasReference: boolean) {
   const parts = [
-    hasReference
-      ? `Using the reference image as the basis, create a 3D model render of: ${d.subject}.`
-      : `A 3D model render of: ${d.subject}.`,
+    !hasReference
+      ? `A 3D model render of: ${d.subject}.`
+      : d.subject
+        ? `Using the reference image as the basis, create a 3D model render of: ${d.subject}.`
+        : "Turn the main object in the reference image into a 3D model render.",
     d.details && `Details: ${d.details}.`,
-    `Style: ${find(DESIGN_STYLES, d.style)?.prompt}.`,
+    find(DESIGN_STYLES, d.style)?.prompt && `Style: ${find(DESIGN_STYLES, d.style)?.prompt}.`,
     find(DESIGN_MATERIALS, d.material)?.prompt && `Material: ${find(DESIGN_MATERIALS, d.material)?.prompt}.`,
     d.colors.length > 0 && `Main colors: ${d.colors.join(", ")}.`,
     `Camera: ${find(DESIGN_VIEWS, d.view)?.prompt}, the entire object fully in frame and centered.`,
