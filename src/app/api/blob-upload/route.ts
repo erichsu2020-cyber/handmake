@@ -8,6 +8,12 @@ import {
   PRINT_CHECK_SNAPSHOT_FOLDER,
   PRINT_CHECK_UPLOAD_FOLDER,
 } from "@/lib/print-check-settings";
+import {
+  MAX_PHOTO_BYTES,
+  PRINT_REVIEW_PHOTO_FOLDER,
+  PRINT_REVIEW_SNAPSHOT_FOLDER,
+  PRINT_REVIEW_UPLOAD_FOLDER,
+} from "@/lib/print-review-settings";
 
 const IMAGES = { types: ["image/png", "image/jpeg", "image/webp"], maxBytes: 20 * 1024 * 1024 };
 // 瀏覽器只能上傳到這幾個資料夾，不能覆蓋產出的圖片或模型
@@ -20,6 +26,10 @@ const FOLDERS = [
   // AI 列印檢查：上傳的 Bambu 3MF、模型截圖
   { prefix: PRINT_CHECK_UPLOAD_FOLDER, types: ["model/3mf"], maxBytes: MAX_PRINT_CHECK_UPLOAD_BYTES },
   { prefix: PRINT_CHECK_SNAPSHOT_FOLDER, types: ["image/png", "image/jpeg"], maxBytes: MAX_SNAPSHOT_BYTES },
+  // 成品改良：成品照片、模型截圖、上傳的 Bambu 3MF
+  { prefix: PRINT_REVIEW_PHOTO_FOLDER, types: ["image/jpeg", "image/png", "image/webp"], maxBytes: MAX_PHOTO_BYTES },
+  { prefix: PRINT_REVIEW_SNAPSHOT_FOLDER, types: ["image/png", "image/jpeg"], maxBytes: MAX_SNAPSHOT_BYTES },
+  { prefix: PRINT_REVIEW_UPLOAD_FOLDER, types: ["model/3mf"], maxBytes: MAX_PRINT_CHECK_UPLOAD_BYTES },
 ];
 
 // 瀏覽器直接上傳到 Vercel Blob：這裡只檢查登入和檔案限制，再發一張短期的上傳許可，

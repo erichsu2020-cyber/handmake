@@ -24,6 +24,10 @@ const FOLDER_LABEL: Record<string, string> = {
   "handmake/print-checks/uploads": "AI 列印檢查上傳的 3MF",
   "handmake/print-checks/snapshots": "AI 列印檢查的模型截圖",
   "handmake/print-checks/fixed": "AI 修正後的 3MF",
+  "handmake/print-reviews/photos": "成品改良的照片",
+  "handmake/print-reviews/snapshots": "成品改良的模型截圖",
+  "handmake/print-reviews/uploads": "成品改良上傳的 3MF",
+  "handmake/print-reviews/fixed": "成品改良修正後的 3MF",
 };
 
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
