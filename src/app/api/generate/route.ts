@@ -3,6 +3,7 @@ import { put } from "@vercel/blob";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { toGenerationView } from "@/lib/generation-view";
+import { fetchUploadedImage } from "@/lib/uploaded-image";
 import {
   DEFAULT_IMAGE_QUALITY,
   DEFAULT_STYLE,
@@ -12,8 +13,6 @@ import {
 import { Generation } from "@/models/Generation";
 
 const MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 // 產出適合後續「圖片轉 3D」（例如 Tripo3D）的參考圖：單一物件、完整入鏡、乾淨背景
 const STYLE_PROMPT =
@@ -43,40 +42,29 @@ export async function POST(request: Request) {
   }
 
   const prompt = String(formData.get("prompt") ?? "").trim();
-  const image = formData.get("image");
-  const file = image instanceof File && image.size > 0 ? image : null;
+  // 原圖由瀏覽器直接上傳到 Vercel Blob（見 /api/blob-upload），這裡只收網址
+  const inputImageUrl = String(formData.get("imageUrl") ?? "").trim() || undefined;
   const style = STYLE_PRESETS.find((s) => s.value === (formData.get("style") ?? DEFAULT_STYLE));
   const quality = IMAGE_QUALITIES.find(
     (q) => q.value === (formData.get("quality") ?? DEFAULT_IMAGE_QUALITY),
   );
 
-  if (!prompt && !file) {
+  if (!prompt && !inputImageUrl) {
     return Response.json({ error: "請輸入文字或上傳一張圖片" }, { status: 400 });
-  }
-  if (file && !ALLOWED_TYPES.includes(file.type)) {
-    return Response.json({ error: "只支援 PNG、JPEG、WebP 圖片" }, { status: 400 });
-  }
-  if (file && file.size > MAX_IMAGE_BYTES) {
-    return Response.json({ error: "圖片不能超過 20MB" }, { status: 400 });
   }
   if (!style || !quality) {
     return Response.json({ error: "風格或品質選項不正確" }, { status: 400 });
   }
 
-  // 原圖也存到 Vercel Blob，歷史紀錄才看得到
-  let inputImageUrl: string | undefined;
-  if (file) {
+  let file: File | null = null;
+  if (inputImageUrl) {
     try {
-      const ext = file.type.split("/")[1];
-      const inputBlob = await put(`handmake/inputs/upload.${ext}`, file, {
-        access: "public",
-        contentType: file.type,
-        addRandomSuffix: true,
-      });
-      inputImageUrl = inputBlob.url;
+      const fetched = await fetchUploadedImage(inputImageUrl, "handmake/inputs/");
+      if (typeof fetched === "string") return Response.json({ error: fetched }, { status: 400 });
+      file = fetched;
     } catch (error) {
-      console.error("上傳原圖到 Vercel Blob 失敗", error);
-      return Response.json({ error: "上傳原圖失敗" }, { status: 500 });
+      console.error("讀取上傳的原圖失敗", error);
+      return Response.json({ error: "讀取上傳的原圖失敗" }, { status: 500 });
     }
   }
 

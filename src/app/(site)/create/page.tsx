@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import ModelPanel from "@/components/ModelPanel";
 import type { GenerationView } from "@/lib/generation-view";
 import {
@@ -39,13 +40,28 @@ export default function CreatePage() {
     setError(null);
     setResult(null);
 
-    const formData = new FormData();
-    formData.append("prompt", prompt);
-    formData.append("style", style);
-    formData.append("quality", quality);
-    if (file) formData.append("image", file);
-
     try {
+      // 原圖直接從瀏覽器上傳到 Vercel Blob，不經過伺服器（Vercel 函式的請求上限只有 4.5MB）
+      let imageUrl: string | null = null;
+      if (file) {
+        try {
+          const blob = await upload(`handmake/inputs/upload.${file.type.split("/")[1]}`, file, {
+            access: "public",
+            handleUploadUrl: "/api/blob-upload",
+            contentType: file.type,
+          });
+          imageUrl = blob.url;
+        } catch (err) {
+          throw new Error(err instanceof Error ? `上傳原圖失敗：${err.message}` : "上傳原圖失敗");
+        }
+      }
+
+      const formData = new FormData();
+      formData.append("prompt", prompt);
+      formData.append("style", style);
+      formData.append("quality", quality);
+      if (imageUrl) formData.append("imageUrl", imageUrl);
+
       const res = await fetch("/api/generate", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "產生失敗");
