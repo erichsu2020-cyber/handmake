@@ -1,5 +1,6 @@
 import { del, list } from "@vercel/blob";
 import { connectDB } from "@/lib/mongodb";
+import { BambuUpload } from "@/models/BambuUpload";
 import { DesignImage } from "@/models/DesignImage";
 import { Generation } from "@/models/Generation";
 
@@ -17,12 +18,13 @@ type GenerationUrls = {
   bambu?: { fileUrl?: string };
 };
 type DesignUrls = { referenceImageUrl?: string; images?: { url: string }[] };
+type BambuUploadUrls = { modelFileUrl?: string; bambu?: { fileUrl?: string } };
 
 const pathOf = (url: string) => decodeURIComponent(new URL(url).pathname.slice(1));
 
 async function referencedPaths() {
   await connectDB();
-  const [generations, designs] = await Promise.all([
+  const [generations, designs, uploads] = await Promise.all([
     Generation.find(
       {},
       {
@@ -35,6 +37,7 @@ async function referencedPaths() {
       },
     ).lean<GenerationUrls[]>(),
     DesignImage.find({}, { referenceImageUrl: 1, "images.url": 1 }).lean<DesignUrls[]>(),
+    BambuUpload.find({}, { modelFileUrl: 1, "bambu.fileUrl": 1 }).lean<BambuUploadUrls[]>(),
   ]);
 
   const urls: (string | null | undefined)[] = [];
@@ -44,6 +47,9 @@ async function referencedPaths() {
   }
   for (const d of designs) {
     urls.push(d.referenceImageUrl, ...(d.images ?? []).map((image) => image.url));
+  }
+  for (const u of uploads) {
+    urls.push(u.modelFileUrl, u.bambu?.fileUrl);
   }
   return new Set(urls.filter((url): url is string => Boolean(url)).map(pathOf));
 }

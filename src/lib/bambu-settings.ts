@@ -38,6 +38,11 @@ export const BRIM_TYPES = [
   { value: "no_brim", label: "無" },
 ] as const;
 
+// 「從電腦上傳」：瀏覽器直接上傳到這個資料夾（見 /api/blob-upload），副檔名決定格式
+export const BAMBU_UPLOAD_FOLDER = "handmake/bambu/uploads/";
+export const MAX_BAMBU_UPLOAD_BYTES = 50 * 1024 * 1024;
+export const BAMBU_UPLOAD_TYPES = { stl: "model/stl", "3mf": "model/3mf" } as const;
+
 // 需要硬化鋼噴嘴的線材
 export const ABRASIVE_FILAMENTS = ["PETG-CF"];
 

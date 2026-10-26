@@ -1,6 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
+import BambuModelPicker, { fromGeneration, fromUpload, type BambuModel } from "@/components/BambuModelPicker";
 import { Check, Chips, Field, PresetButton, Section, Select } from "@/components/form-controls";
 import {
   ABRASIVE_FILAMENTS,
@@ -24,26 +26,39 @@ import {
   type PlateType,
 } from "@/lib/bambu-settings";
 import { downloadUrl } from "@/lib/blob-url";
-import type { BambuView, GenerationView } from "@/lib/generation-view";
+import type { BambuUploadView, BambuView, GenerationView } from "@/lib/generation-view";
+
+// three.js 只能在瀏覽器執行
+const ModelPreview = dynamic(() => import("@/components/ModelPreview"), { ssr: false });
 
 // 之前存的設定可能用到後來拿掉的選項，驗證不過就改用預設值
-function initialSettings(model: GenerationView) {
-  const saved = model.bambu && parseBambuSettings(model.bambu.settings);
+function initialSettings(model: BambuModel | undefined) {
+  const saved = model?.bambu && parseBambuSettings(model.bambu.settings);
   return saved && typeof saved !== "string" ? saved : DEFAULT_BAMBU_SETTINGS;
 }
 
 const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-export default function BambuPanel({ models }: { models: GenerationView[] }) {
-  const [selectedId, setSelectedId] = useState(models[0].id);
-  const [settings, setSettings] = useState<BambuSettings>(() => initialSettings(models[0]));
+export default function BambuPanel({
+  generations,
+  uploads: initialUploads,
+}: {
+  generations: GenerationView[];
+  uploads: BambuUploadView[];
+}) {
+  const siteModels = generations.map(fromGeneration);
+  // 上傳和刪除會改變列表，所以放在 state
+  const [uploads, setUploads] = useState(() => initialUploads.map(fromUpload));
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => (siteModels[0] ?? uploads[0])?.key ?? null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [settings, setSettings] = useState<BambuSettings>(() => initialSettings(siteModels[0] ?? uploads[0]));
   // 這次在頁面上產生的結果，蓋過頁面載入時的資料
   const [results, setResults] = useState<Record<string, BambuView>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const model = models.find((m) => m.id === selectedId) ?? models[0];
-  const bambu = results[model.id] ?? model.bambu;
+  const model = [...siteModels, ...uploads].find((m) => m.key === selectedKey);
+  const bambu = model && (results[model.key] ?? model.bambu);
   const printer = findPrinter(settings.printer) ?? BAMBU_PRINTERS[0];
   const nozzle = findNozzle(printer, settings.nozzle) ?? printer.nozzles[0];
   const filament = findFilament(nozzle, settings.filament) ?? nozzle.filaments[0];
@@ -51,10 +66,11 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
   const set = <K extends keyof BambuSettings>(key: K, value: BambuSettings[K]) =>
     setSettings((s) => ({ ...s, [key]: value }));
 
-  function selectModel(next: GenerationView) {
-    setSelectedId(next.id);
-    setSettings(initialSettings(next));
+  function selectModel(next: BambuModel) {
+    setSelectedKey(next.key);
+    setSettings(initialSettings({ ...next, bambu: results[next.key] ?? next.bambu }));
     setError(null);
+    setPickerOpen(false);
   }
 
   // 換印表機或噴嘴：噴嘴沒有就用 0.4（或第一個）、線材沒有就換第一種、層高換最接近的、溫度改回官方建議值
@@ -91,22 +107,23 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
     ),
   )?.value;
 
-  const dims = model.model3d?.dimensionsMm;
+  const dims = model?.dimensionsMm;
   const tooBig = dims && dims.some((v, i) => v > nozzle.bed[i]);
   const [nozzleLow, nozzleHigh] = filament.nozzleRange;
 
   async function handleSubmit() {
+    if (!model) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/generations/${model.id}/bambu`, {
+      const res = await fetch(model.bambuApi, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "產生 Bambu 檔失敗");
-      setResults((r) => ({ ...r, [model.id]: data.bambu }));
+      setResults((r) => ({ ...r, [model.key]: data.bambu }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "產生 Bambu 檔失敗");
     } finally {
@@ -132,33 +149,58 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3">
-        <h2 className="text-xl font-semibold">1. 選擇模型</h2>
-        <ul className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-          {models.map((m) => {
-            const b = results[m.id] ?? m.bambu;
-            return (
-              <li key={m.id}>
-                <button
-                  type="button"
-                  onClick={() => selectModel(m)}
-                  className={`flex w-full flex-col overflow-hidden rounded-lg border text-left text-xs ${
-                    m.id === model.id ? "border-foreground ring-2 ring-foreground" : "border-zinc-300 dark:border-zinc-700"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.outputImageUrl} alt="" className="aspect-square w-full bg-white object-contain" />
-                  <span className="flex flex-col gap-0.5 p-2">
-                    <span className="line-clamp-1">{m.prompt || "（上傳圖片）"}</span>
-                    <span className="text-zinc-500">
-                      {m.model3d?.dimensionsMm?.map((v) => Math.round(v)).join("×")} mm
-                    </span>
-                    {b && <span className={b.outdated ? "text-amber-600" : "text-zinc-500"}>{b.outdated ? "Bambu 檔需更新" : "已有 Bambu 檔"}</span>}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold">1. 選擇模型</h2>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            disabled={loading}
+            className="rounded-full border border-foreground px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            {model ? "更換檔案" : "開啟檔案"}
+          </button>
+        </div>
+
+        {model ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+            {/* key：換模型時重新建立預覽，不會殘留上一個模型 */}
+            <ModelPreview key={model.key} url={model.fileUrl} format="3MF" />
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span className="font-medium">{model.name}</span>
+              <span className="text-zinc-500">
+                {model.kind === "upload" ? "從電腦上傳" : "網站上的模型"}
+                {dims && `・寬 ${dims[0]} × 深 ${dims[1]} × 高 ${dims[2]} mm`}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="flex flex-col items-center gap-1 rounded-lg border-2 border-dashed border-zinc-300 p-10 text-center dark:border-zinc-700"
+          >
+            <span className="font-medium">開啟檔案</span>
+            <span className="text-sm text-zinc-500">選擇網站上完成的 3MF，或從電腦上傳 STL／3MF</span>
+          </button>
+        )}
+
+        <BambuModelPicker
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          generations={siteModels}
+          uploads={uploads}
+          selectedKey={selectedKey}
+          onSelect={selectModel}
+          onUploaded={(u) => {
+            const next = fromUpload(u);
+            setUploads((list) => [next, ...list]);
+            selectModel(next);
+          }}
+          onDeleted={(key) => {
+            setUploads((list) => list.filter((m) => m.key !== key));
+            if (key === selectedKey) setSelectedKey(null);
+          }}
+        />
       </section>
 
       <section className="flex flex-col gap-4">
@@ -181,7 +223,7 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
           </Field>
           {tooBig && (
             <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-800">
-              模型 {dims.map((v) => Math.round(v)).join("×")} mm 放不進這台印表機，請換印表機，或回到第 2 步縮小尺寸。
+              模型 {dims.map((v) => Math.round(v)).join("×")} mm 放不進這台印表機，請換印表機，或先縮小模型。
             </p>
           )}
 
@@ -279,7 +321,7 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={loading || tooBig}
+          disabled={loading || tooBig || !model}
           className="h-12 rounded-full bg-foreground px-6 font-medium text-background transition-opacity disabled:opacity-50"
         >
           {loading ? "產生中…" : bambu ? "用這些設定重新產生 Bambu 3MF" : "產生 Bambu 3MF"}

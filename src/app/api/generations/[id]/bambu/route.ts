@@ -1,10 +1,9 @@
 import { isValidObjectId } from "mongoose";
-import { put } from "@vercel/blob";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
-import { writeBambu3mf } from "@/lib/bambu-3mf";
+import { BambuFileError, createBambuFile } from "@/lib/bambu-file";
 import { parseBambuSettings } from "@/lib/bambu-settings";
 import { deleteBlobs } from "@/lib/blob-cleanup";
-import type { BambuView } from "@/lib/generation-view";
+import { toBambuView } from "@/lib/generation-view";
 import { connectDB } from "@/lib/mongodb";
 import { Generation } from "@/models/Generation";
 
@@ -29,56 +28,17 @@ export async function POST(request: Request, ctx: RouteContext<"/api/generations
     return Response.json({ error: "只有 3MF 格式可以寫入 Bambu Studio 設定" }, { status: 400 });
   }
 
-  let input: Buffer;
+  let bambu: Awaited<ReturnType<typeof createBambuFile>>;
   try {
-    const res = await fetch(m.fileUrl, { cache: "no-store" });
-    if (!res.ok) throw new Error(`下載 3MF 失敗 (${res.status})`);
-    input = Buffer.from(await res.arrayBuffer());
+    bambu = await createBambuFile(m.fileUrl, settings);
   } catch (error) {
-    console.error("下載 3MF 失敗", error);
-    return Response.json({ error: "讀取 3MF 檔失敗" }, { status: 502 });
+    if (error instanceof BambuFileError) return Response.json({ error: error.message }, { status: error.status });
+    throw error;
   }
 
-  let output: Buffer;
-  try {
-    output = await writeBambu3mf(input, settings);
-  } catch (error) {
-    // 模型放不進平台等原因，訊息直接給使用者看
-    console.error("寫入 Bambu 設定失敗", error);
-    const message = error instanceof Error ? error.message : "寫入 Bambu 設定失敗";
-    return Response.json({ error: message }, { status: 400 });
-  }
-
-  let blob: Awaited<ReturnType<typeof put>>;
-  try {
-    blob = await put("handmake/models/bambu/model.3mf", output, {
-      access: "public",
-      contentType: "model/3mf",
-      addRandomSuffix: true,
-    });
-  } catch (error) {
-    console.error("上傳 Bambu 3MF 到 Vercel Blob 失敗", error);
-    return Response.json({ error: "上傳 Vercel Blob 失敗" }, { status: 500 });
-  }
-
-  const bambu = {
-    settings,
-    sourceFileUrl: m.fileUrl,
-    fileUrl: blob.url,
-    filePathname: blob.pathname,
-    fileSizeBytes: output.length,
-    updatedAt: new Date(),
-  };
   await Generation.updateOne({ _id: doc._id }, { $set: { bambu } });
   // 每筆只留最新一份 Bambu 檔
   if (doc.bambu?.fileUrl) await deleteBlobs([doc.bambu.fileUrl]);
 
-  const view: BambuView = {
-    settings,
-    fileUrl: bambu.fileUrl,
-    fileSizeBytes: bambu.fileSizeBytes,
-    updatedAt: bambu.updatedAt.toISOString(),
-    outdated: false,
-  };
-  return Response.json({ bambu: view });
+  return Response.json({ bambu: toBambuView(bambu, m.fileUrl) });
 }

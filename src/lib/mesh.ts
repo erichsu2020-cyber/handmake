@@ -27,13 +27,29 @@ export function parseModel(format: ModelFormat, input: Buffer): MeshData[] {
 
 function parseStl(input: Buffer): MeshData {
   const triangles = input.length >= 84 ? input.readUInt32LE(80) : 0;
-  if (input.length !== 84 + triangles * 50) throw new Error("STL 格式不正確（只支援二進位 STL）");
+  if (input.length !== 84 + triangles * 50) {
+    // 不是二進位 STL 的話，試試文字（ASCII）格式：很多軟體匯出的是這種
+    if (input.subarray(0, 5).toString("latin1").toLowerCase() === "solid") return parseAsciiStl(input);
+    throw new Error("STL 格式不正確");
+  }
 
   const positions = new Float32Array(triangles * 9);
   for (let i = 0; i < triangles; i++) {
     for (let k = 0; k < 9; k++) positions[i * 9 + k] = input.readFloatLE(84 + i * 50 + 12 + k * 4);
   }
   return { positions, indices: Uint32Array.from({ length: triangles * 3 }, (_, i) => i) };
+}
+
+// 每個 facet 有三行「vertex x y z」
+function parseAsciiStl(input: Buffer): MeshData {
+  const values: number[] = [];
+  for (const [, x, y, z] of input.toString("latin1").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) {
+    values.push(Number(x), Number(y), Number(z));
+  }
+  if (values.length === 0 || values.length % 9 !== 0 || values.some((v) => !Number.isFinite(v))) {
+    throw new Error("STL 格式不正確");
+  }
+  return { positions: Float32Array.from(values), indices: Uint32Array.from({ length: values.length / 3 }, (_, i) => i) };
 }
 
 function parse3mf(input: Buffer): MeshData[] {

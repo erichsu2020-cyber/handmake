@@ -44,6 +44,19 @@ export type BambuView = {
   outdated: boolean;
 };
 
+// Bambu 設定頁「從電腦上傳」的模型
+export type BambuUploadView = {
+  id: string;
+  name: string;
+  sourceFormat: "STL" | "3MF";
+  modelFileUrl: string;
+  dimensionsMm: [number, number, number];
+  triangles: number;
+  pieces: number;
+  createdAt: string;
+  bambu?: BambuView;
+};
+
 /* eslint-disable @typescript-eslint/no-explicit-any -- 舊資料欄位不固定，在這裡統一轉換 */
 export function toModel3dView(m: any): Model3dView | undefined {
   if (!m) return undefined;
@@ -70,13 +83,33 @@ export function toGenerationView(doc: any): GenerationView {
     outputImageUrl: doc.outputImageUrl,
     createdAt: new Date(doc.createdAt).toISOString(),
     model3d: toModel3dView(doc.model3d),
-    bambu: doc.bambu && {
-      settings: doc.bambu.settings,
-      fileUrl: doc.bambu.fileUrl,
-      fileSizeBytes: doc.bambu.fileSizeBytes,
-      updatedAt: new Date(doc.bambu.updatedAt).toISOString(),
-      outdated: doc.bambu.sourceFileUrl !== doc.model3d?.fileUrl,
-    },
+    bambu: toBambuView(doc.bambu, doc.model3d?.fileUrl),
+  };
+}
+
+// modelFileUrl：目前的 3D 檔；跟做 Bambu 檔時用的不一樣，就代表模型之後改過
+export function toBambuView(b: any, modelFileUrl: string | undefined): BambuView | undefined {
+  if (!b) return undefined;
+  return {
+    settings: b.settings,
+    fileUrl: b.fileUrl,
+    fileSizeBytes: b.fileSizeBytes,
+    updatedAt: new Date(b.updatedAt).toISOString(),
+    outdated: b.sourceFileUrl !== modelFileUrl,
+  };
+}
+
+export function toBambuUploadView(doc: any): BambuUploadView {
+  return {
+    id: doc._id.toString(),
+    name: doc.name,
+    sourceFormat: doc.sourceFormat,
+    modelFileUrl: doc.modelFileUrl,
+    dimensionsMm: doc.dimensionsMm,
+    triangles: doc.triangles,
+    pieces: doc.pieces,
+    createdAt: new Date(doc.createdAt).toISOString(),
+    bambu: toBambuView(doc.bambu, doc.modelFileUrl),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
