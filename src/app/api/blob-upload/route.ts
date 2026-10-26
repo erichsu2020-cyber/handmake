@@ -1,6 +1,7 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { BAMBU_UPLOAD_FOLDER, BAMBU_UPLOAD_TYPES, MAX_BAMBU_UPLOAD_BYTES } from "@/lib/bambu-settings";
+import { DRAWING_FOLDER, MAX_DRAWING_IMAGE_BYTES } from "@/lib/drawing-settings";
 
 const IMAGES = { types: ["image/png", "image/jpeg", "image/webp"], maxBytes: 20 * 1024 * 1024 };
 // 瀏覽器只能上傳到這幾個資料夾，不能覆蓋產出的圖片或模型
@@ -8,6 +9,8 @@ const FOLDERS = [
   { prefix: "handmake/inputs/", ...IMAGES },
   { prefix: "handmake/designs/references/", ...IMAGES },
   { prefix: BAMBU_UPLOAD_FOLDER, types: Object.values(BAMBU_UPLOAD_TYPES), maxBytes: MAX_BAMBU_UPLOAD_BYTES },
+  // 畫作的圖層和預覽圖
+  { prefix: DRAWING_FOLDER, types: ["image/png"], maxBytes: MAX_DRAWING_IMAGE_BYTES },
 ];
 
 // 瀏覽器直接上傳到 Vercel Blob：這裡只檢查登入和檔案限制，再發一張短期的上傳許可，

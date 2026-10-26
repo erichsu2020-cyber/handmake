@@ -17,6 +17,10 @@ const FOLDER_LABEL: Record<string, string> = {
   "handmake/models/raw": "Tripo 原始檔（舊版本）",
   "handmake/designs/images": "設計圖",
   "handmake/designs/references": "設計參考圖",
+  "handmake/drawings": "畫作",
+  "handmake/models/bambu": "Bambu 設定檔（舊版本）",
+  "handmake/bambu/models": "上傳的模型",
+  "handmake/bambu/uploads": "上傳到一半的模型",
 };
 
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
