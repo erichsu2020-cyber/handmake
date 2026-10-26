@@ -63,7 +63,7 @@ function Hero() {
             變成<span className="text-accent">印得出來</span>的模型
           </h1>
           <p className="max-w-md text-lg text-muted">
-            上傳照片或輸入一句話，Handmake 用 AI 幫你畫出 3D 造型、建立立體網格，再整理成可以直接送進 3D
+            上傳照片或輸入一句話，小物屋用 AI 幫你畫出 3D 造型、建立立體網格，再整理成可以直接送進 3D
             列印機的檔案。
           </p>
           <div className="flex flex-wrap gap-3">

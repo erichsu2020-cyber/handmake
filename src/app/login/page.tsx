@@ -5,7 +5,7 @@ import { Logo } from "@/components/site-nav";
 import { getCurrentUser } from "@/lib/auth";
 import { safeNext } from "@/lib/safe-redirect";
 
-export const metadata = { title: "登入 | Handmake" };
+export const metadata = { title: "登入 | 小物屋" };
 
 export default function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
@@ -75,7 +75,7 @@ function BrandPanel() {
         <p className="max-w-sm text-[#a8a29e]">AI 畫圖、Tripo3D 建模、自動整理成可列印的 STL／3MF／OBJ。</p>
       </div>
 
-      <p className="relative text-xs text-[#a8a29e]">© Handmake</p>
+      <p className="relative text-xs text-[#a8a29e]">© 小物屋</p>
     </div>
   );
 }

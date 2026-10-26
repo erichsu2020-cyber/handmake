@@ -75,7 +75,7 @@ export default function CreatePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-10">
-      <h1 className="text-3xl font-semibold">Handmake 3D 產生器</h1>
+      <h1 className="text-3xl font-semibold">小物屋 3D 產生器</h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-2">

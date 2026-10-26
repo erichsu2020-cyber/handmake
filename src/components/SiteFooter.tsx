@@ -25,7 +25,7 @@ export default function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-line">
-        <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted">© Handmake・用 AI 把想法印出來</p>
+        <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted">© 小物屋・用 AI 把想法印出來</p>
       </div>
     </footer>
   );

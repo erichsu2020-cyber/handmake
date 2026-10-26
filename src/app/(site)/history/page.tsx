@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { listGenerations } from "@/lib/generations";
 import { STYLE_PRESETS } from "@/lib/image-settings";
 
-export const metadata = { title: "歷史紀錄 | Handmake" };
+export const metadata = { title: "歷史紀錄 | 小物屋" };
 
 const STATUS_LABEL = {
   generating: "產生中",

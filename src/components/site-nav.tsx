@@ -16,7 +16,7 @@ export function Logo() {
         <path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-accent" />
         <path d="M12 12 21 7M12 12 3 7M12 12v10" className="stroke-background" strokeWidth="1.5" fill="none" />
       </svg>
-      Handmake
+      小物屋
     </Link>
   );
 }

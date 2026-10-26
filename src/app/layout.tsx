@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Handmake",
+  title: "小物屋",
   description: "上傳圖片或輸入文字，產生 3D 模型",
 };
 

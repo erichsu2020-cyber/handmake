@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { listBambuUploads } from "@/lib/bambu-uploads";
 import { listBambuModels } from "@/lib/generations";
 
-export const metadata = { title: "Bambu 設定 | Handmake" };
+export const metadata = { title: "Bambu 設定 | 小物屋" };
 
 export default function BambuPage() {
   return (

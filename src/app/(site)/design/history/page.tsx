@@ -13,7 +13,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { listDesigns } from "@/lib/designs";
 
-export const metadata = { title: "設計紀錄 | Handmake" };
+export const metadata = { title: "設計紀錄 | 小物屋" };
 
 const labelOf = (options: { value: string; label: string }[], value: string) =>
   options.find((o) => o.value === value)?.label ?? value;
