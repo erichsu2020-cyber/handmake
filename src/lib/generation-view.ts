@@ -1,3 +1,4 @@
+import type { BambuSettings } from "@/lib/bambu-settings";
 import type { MeshStats } from "@/lib/print-estimate";
 import { migrateSettings, type ModelFormat, type ModelSettings } from "@/lib/print-settings";
 
@@ -31,6 +32,16 @@ export type GenerationView = {
   outputImageUrl: string;
   createdAt: string;
   model3d?: Model3dView;
+  bambu?: BambuView;
+};
+
+export type BambuView = {
+  settings: BambuSettings;
+  fileUrl: string;
+  fileSizeBytes?: number;
+  updatedAt: string;
+  // 之後重新處理過 3D 檔，這份 Bambu 檔用的是舊模型
+  outdated: boolean;
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 舊資料欄位不固定，在這裡統一轉換 */
@@ -59,6 +70,13 @@ export function toGenerationView(doc: any): GenerationView {
     outputImageUrl: doc.outputImageUrl,
     createdAt: new Date(doc.createdAt).toISOString(),
     model3d: toModel3dView(doc.model3d),
+    bambu: doc.bambu && {
+      settings: doc.bambu.settings,
+      fileUrl: doc.bambu.fileUrl,
+      fileSizeBytes: doc.bambu.fileSizeBytes,
+      updatedAt: new Date(doc.bambu.updatedAt).toISOString(),
+      outdated: doc.bambu.sourceFileUrl !== doc.model3d?.fileUrl,
+    },
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

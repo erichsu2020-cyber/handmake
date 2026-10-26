@@ -13,12 +13,23 @@ const PROJECTION = {
   outputImageUrl: 1,
   createdAt: 1,
   model3d: 1,
+  bambu: 1,
 };
 
 // 一律帶 userId：只查得到該帳號自己的紀錄
 export async function listGenerations(userId: string, limit = 50) {
   await connectDB();
   const docs = await Generation.find({ userId }, PROJECTION).sort({ createdAt: -1 }).limit(limit).lean();
+  return docs.map(toGenerationView);
+}
+
+// Bambu 設定頁：只列出已完成的 3MF
+export async function listBambuModels(userId: string, limit = 50) {
+  await connectDB();
+  const docs = await Generation.find({ userId, "model3d.status": "done", "model3d.format": "3MF" }, PROJECTION)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
   return docs.map(toGenerationView);
 }
 

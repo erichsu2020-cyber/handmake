@@ -6,7 +6,7 @@ import { Generation } from "@/models/Generation";
 
 const BUSY = ["generating", "texturing", "converting", "uploading", "processing"];
 
-// 刪除一筆紀錄，連同 Vercel Blob 上的原圖、3D 模型圖、3D 檔、Tripo 原始檔
+// 刪除一筆紀錄，連同 Vercel Blob 上的原圖、3D 模型圖、3D 檔、Tripo 原始檔、Bambu 設定檔
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/generations/[id]">) {
   const user = await getCurrentUser();
   if (!user) return unauthorized();
@@ -30,6 +30,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/generati
     doc.model3d?.fileUrl,
     doc.model3d?.rawFileUrl,
     legacy?.stlUrl,
+    doc.bambu?.fileUrl,
     ...(doc.model3d?.staleFileUrls ?? []),
   ]);
 

@@ -14,6 +14,7 @@ type GenerationUrls = {
   outputImageUrl?: string;
   // stlUrl 是最早期資料的欄位
   model3d?: { fileUrl?: string; rawFileUrl?: string; stlUrl?: string };
+  bambu?: { fileUrl?: string };
 };
 type DesignUrls = { referenceImageUrl?: string; images?: { url: string }[] };
 
@@ -30,6 +31,7 @@ async function referencedPaths() {
         "model3d.fileUrl": 1,
         "model3d.rawFileUrl": 1,
         "model3d.stlUrl": 1,
+        "bambu.fileUrl": 1,
       },
     ).lean<GenerationUrls[]>(),
     DesignImage.find({}, { referenceImageUrl: 1, "images.url": 1 }).lean<DesignUrls[]>(),
@@ -38,7 +40,7 @@ async function referencedPaths() {
   const urls: (string | null | undefined)[] = [];
   for (const g of generations) {
     const m = g.model3d;
-    urls.push(g.inputImageUrl, g.outputImageUrl, m?.fileUrl, m?.rawFileUrl, m?.stlUrl);
+    urls.push(g.inputImageUrl, g.outputImageUrl, m?.fileUrl, m?.rawFileUrl, m?.stlUrl, g.bambu?.fileUrl);
   }
   for (const d of designs) {
     urls.push(d.referenceImageUrl, ...(d.images ?? []).map((image) => image.url));

@@ -1,0 +1,963 @@
+{
+  "version": "02.08.00.09",
+  "printers": [
+    {
+      "id": "A1M",
+      "label": "Bambu Lab A1 mini",
+      "bed": [
+        180,
+        180,
+        180
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24,
+        0.28
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 60,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 60,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 60,
+            "smooth": 60,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 60,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 60,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 240,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 30,
+            "smooth": 30,
+            "cool": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "A1",
+      "label": "Bambu Lab A1",
+      "bed": [
+        256,
+        256,
+        256
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24,
+        0.28
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 240,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "ABS",
+          "nozzleTemp": 270,
+          "nozzleRange": [
+            240,
+            280
+          ],
+          "bedTemp": {
+            "textured": 100,
+            "smooth": 100,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 45,
+            "smooth": 45,
+            "cool": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "P1P",
+      "label": "Bambu Lab P1P",
+      "bed": [
+        256,
+        256,
+        250
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24,
+        0.28
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 65,
+            "smooth": 65,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "ABS",
+          "nozzleTemp": 270,
+          "nozzleRange": [
+            240,
+            280
+          ],
+          "bedTemp": {
+            "textured": 100,
+            "smooth": 100,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 45,
+            "smooth": 45,
+            "cool": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "P1S",
+      "label": "Bambu Lab P1S",
+      "bed": [
+        256,
+        256,
+        250
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24,
+        0.28
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "ABS",
+          "nozzleTemp": 270,
+          "nozzleRange": [
+            240,
+            280
+          ],
+          "bedTemp": {
+            "textured": 90,
+            "smooth": 90,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 35,
+            "smooth": 35,
+            "cool": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "X1C",
+      "label": "Bambu Lab X1 Carbon",
+      "bed": [
+        256,
+        256,
+        250
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24,
+        0.28
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "ABS",
+          "nozzleTemp": 270,
+          "nozzleRange": [
+            240,
+            280
+          ],
+          "bedTemp": {
+            "textured": 90,
+            "smooth": 90,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 35,
+            "smooth": 35,
+            "cool": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "P2S",
+      "label": "Bambu Lab P2S",
+      "bed": [
+        256,
+        256,
+        256
+      ],
+      "layerHeights": [
+        0.08,
+        0.12,
+        0.16,
+        0.2,
+        0.24
+      ],
+      "filaments": [
+        {
+          "id": "PLA Basic",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Matte",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Silk+",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Marble",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            190,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PLA Translucent",
+          "nozzleTemp": 220,
+          "nozzleRange": [
+            200,
+            240
+          ],
+          "bedTemp": {
+            "textured": 55,
+            "smooth": 55,
+            "cool": 35
+          }
+        },
+        {
+          "id": "PETG Basic",
+          "nozzleTemp": 250,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG HF",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG Translucent",
+          "nozzleTemp": 245,
+          "nozzleRange": [
+            230,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "PETG-CF",
+          "nozzleTemp": 255,
+          "nozzleRange": [
+            240,
+            270
+          ],
+          "bedTemp": {
+            "textured": 70,
+            "smooth": 70,
+            "cool": 0
+          }
+        },
+        {
+          "id": "ABS",
+          "nozzleTemp": 270,
+          "nozzleRange": [
+            240,
+            280
+          ],
+          "bedTemp": {
+            "textured": 90,
+            "smooth": 90,
+            "cool": 0
+          }
+        },
+        {
+          "id": "TPU 95A HF",
+          "nozzleTemp": 230,
+          "nozzleRange": [
+            200,
+            250
+          ],
+          "bedTemp": {
+            "textured": 35,
+            "smooth": 35,
+            "cool": 30
+          }
+        }
+      ]
+    }
+  ]
+}
