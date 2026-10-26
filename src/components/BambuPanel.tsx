@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import BambuGuide from "@/components/BambuGuide";
 import BambuModelPicker, { fromGeneration, fromUpload, type BambuModel } from "@/components/BambuModelPicker";
 import { Check, Chips, Field, PresetButton, Section, Select } from "@/components/form-controls";
 import {
@@ -25,6 +26,7 @@ import {
   type BambuSettings,
   type PlateType,
 } from "@/lib/bambu-settings";
+import { GUIDES, PRODUCT_TYPES, applyProductType, matchProductType } from "@/lib/bambu-guide";
 import { downloadUrl } from "@/lib/blob-url";
 import type { BambuUploadView, BambuView, GenerationView } from "@/lib/generation-view";
 
@@ -39,6 +41,10 @@ function initialSettings(model: BambuModel | undefined) {
 
 const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+// 填充密度對應到說明表格的哪一列
+const infillRow = (density: number) =>
+  density <= 10 ? "0–10%" : density <= 20 ? "15–20%" : density <= 40 ? "25–40%" : "50% 以上";
+
 export default function BambuPanel({
   generations,
   uploads: initialUploads,
@@ -52,6 +58,8 @@ export default function BambuPanel({
   const [selectedKey, setSelectedKey] = useState<string | null>(() => (siteModels[0] ?? uploads[0])?.key ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [settings, setSettings] = useState<BambuSettings>(() => initialSettings(siteModels[0] ?? uploads[0]));
+  // 最後按下的產品類型，用來顯示「為什麼這樣設定」；載入舊設定時，剛好符合某個類型就顯示那個
+  const [productType, setProductType] = useState<string | undefined>(() => matchProductType(settings));
   // 這次在頁面上產生的結果，蓋過頁面載入時的資料
   const [results, setResults] = useState<Record<string, BambuView>>({});
   const [loading, setLoading] = useState(false);
@@ -68,7 +76,9 @@ export default function BambuPanel({
 
   function selectModel(next: BambuModel) {
     setSelectedKey(next.key);
-    setSettings(initialSettings({ ...next, bambu: results[next.key] ?? next.bambu }));
+    const nextSettings = initialSettings({ ...next, bambu: results[next.key] ?? next.bambu });
+    setSettings(nextSettings);
+    setProductType(matchProductType(nextSettings));
     setError(null);
     setPickerOpen(false);
   }
@@ -106,6 +116,12 @@ export default function BambuPanel({
           : settings[key] === p.settings[key],
     ),
   )?.value;
+
+  const chosenType = PRODUCT_TYPES.find((t) => t.value === productType);
+  // 頂部／底部實際厚度 = 層數 × 層高
+  const thickness = (layers: number) => (layers * settings.layerHeight).toFixed(2);
+  const thinTop = settings.topLayers * settings.layerHeight < 0.8 - 1e-6;
+  const thinBottom = settings.bottomLayers * settings.layerHeight < 0.6 - 1e-6;
 
   const dims = model?.dimensionsMm;
   const tooBig = dims && dims.some((v, i) => v > nozzle.bed[i]);
@@ -205,16 +221,72 @@ export default function BambuPanel({
 
       <section className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold">2. 調整列印設定</h2>
+        <p className="text-sm text-zinc-500">每個參數旁邊的 ⓘ 可以看用途、選項比較和建議。</p>
+
+        <Section title="依產品類型推薦" disabled={loading}>
+          <Field label="你要印的是什麼？" info={<BambuGuide guide={GUIDES.productType} />}>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {PRODUCT_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => {
+                    setProductType(t.value);
+                    setSettings((s) => applyProductType(s, t.value));
+                  }}
+                  className={`flex flex-col gap-0.5 rounded-lg border p-2.5 text-left ${
+                    productType === t.value
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-zinc-300 dark:border-zinc-700"
+                  }`}
+                >
+                  <span className="text-sm font-medium">{t.label}</span>
+                  <span className={`text-xs ${productType === t.value ? "opacity-80" : "text-zinc-500"}`}>
+                    {t.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Field>
+          {chosenType && (
+            <div className="flex flex-col gap-2 rounded-lg bg-foreground/5 p-3 text-sm">
+              <p className="font-medium">
+                為什麼這樣設定
+                {matchProductType(settings) !== chosenType.value && (
+                  <span className="ml-2 font-normal text-zinc-500">（你已經手動調整了部分設定）</span>
+                )}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {chosenType.reasons.map((r) => (
+                  <li key={r}>・{r}</li>
+                ))}
+              </ul>
+              {!chosenType.filaments.includes(filament.id) && (
+                <p className="text-amber-700 dark:text-amber-500">
+                  這台印表機／噴嘴沒有推薦的 {chosenType.filaments.join("、")}，維持使用 Bambu {filament.id}。
+                </p>
+              )}
+            </div>
+          )}
+        </Section>
 
         <Section title="印表機與線材" disabled={loading}>
-          <Field label="印表機" hint={`列印範圍 ${nozzle.bed.join("×")} mm`}>
+          <Field
+            label="印表機"
+            hint={`列印範圍 ${nozzle.bed.join("×")} mm`}
+            info={<BambuGuide guide={GUIDES.printer} highlight={printer.label.replace("Bambu Lab ", "")} />}
+          >
             <Select
               value={printer.id}
               options={BAMBU_PRINTERS.map((p) => ({ value: p.id, label: p.label }))}
               onChange={(id) => changeSetup(id, settings.nozzle)}
             />
           </Field>
-          <Field label="噴嘴" hint="小噴嘴細節較好但較慢；大噴嘴較快、較堅固，適合大型模型">
+          <Field
+            label="噴嘴"
+            hint="要選印表機上實際裝的噴嘴"
+            info={<BambuGuide guide={GUIDES.nozzle} highlight={`${nozzle.diameter} mm`} />}
+          >
             <Chips
               value={String(nozzle.diameter)}
               options={printer.nozzles.map((n) => ({ value: String(n.diameter), label: `${n.diameter} mm` }))}
@@ -227,7 +299,7 @@ export default function BambuPanel({
             </p>
           )}
 
-          <Field label="線材">
+          <Field label="線材" info={<BambuGuide guide={GUIDES.filament} highlight={filament.id} />}>
             <Select
               value={filament.id}
               options={nozzle.filaments.map((f) => ({ value: f.id, label: `Bambu ${f.id}` }))}
@@ -240,7 +312,11 @@ export default function BambuPanel({
             </p>
           )}
 
-          <Field label="列印板" hint="熱床溫度會套用到這種板子">
+          <Field
+            label="列印板"
+            hint="熱床溫度會套用到這種板子；只列出這種線材適合的板子"
+            info={<BambuGuide guide={GUIDES.plate} highlight={PLATES.find((p) => p.value === settings.plate)?.label} />}
+          >
             <Chips
               value={settings.plate}
               options={PLATES.filter((p) => filament.bedTemp[p.value] > 0)}
@@ -249,17 +325,29 @@ export default function BambuPanel({
           </Field>
 
           <div className="flex flex-wrap gap-6">
-            <Field label="噴嘴溫度" hint={`官方建議 ${filament.nozzleTemp}°C，可用 ${nozzleLow}–${nozzleHigh}°C`}>
+            <Field
+              label="噴嘴溫度"
+              hint={`官方建議 ${filament.nozzleTemp}°C，可用 ${nozzleLow}–${nozzleHigh}°C`}
+              info={<BambuGuide guide={GUIDES.nozzleTemp} />}
+            >
               {numberInput("nozzleTemp", nozzleLow, nozzleHigh, "°C")}
             </Field>
-            <Field label="熱床溫度" hint={`官方建議 ${filament.bedTemp[settings.plate]}°C`}>
+            <Field
+              label="熱床溫度"
+              hint={`官方建議 ${filament.bedTemp[settings.plate]}°C`}
+              info={<BambuGuide guide={GUIDES.bedTemp} />}
+            >
               {numberInput("bedTemp", 0, 110, "°C")}
             </Field>
           </div>
         </Section>
 
         <Section title="列印品質" disabled={loading}>
-          <Field label="快速預設" hint="只會換掉層高、牆數、頂底層和填充，其他設定不變">
+          <Field
+            label="快速預設"
+            hint="只會換掉層高、牆數、頂底層和填充，其他設定不變"
+            info={<BambuGuide guide={GUIDES.quickPreset} />}
+          >
             <div className="flex flex-wrap gap-2">
               {QUICK_PRESETS.map((p) => (
                 <PresetButton
@@ -273,7 +361,11 @@ export default function BambuPanel({
             </div>
           </Field>
 
-          <Field label="層高" hint="越小越細緻，但列印時間越長">
+          <Field
+            label="層高"
+            hint="越小越細緻，但列印時間越長"
+            info={<BambuGuide guide={GUIDES.layerHeight} highlight={settings.layerHeight.toFixed(2)} />}
+          >
             <Chips
               value={String(settings.layerHeight)}
               options={nozzle.layerHeights.map((h) => ({ value: String(h), label: `${h.toFixed(2)} mm` }))}
@@ -282,13 +374,43 @@ export default function BambuPanel({
           </Field>
 
           <div className="flex flex-wrap gap-6">
-            <Field label="牆數">{numberInput("wallLoops", 1, 10)}</Field>
-            <Field label="頂層數">{numberInput("topLayers", 0, 30)}</Field>
-            <Field label="底層數">{numberInput("bottomLayers", 0, 30)}</Field>
-            <Field label="填充密度">{numberInput("infillDensity", 0, 100, "%")}</Field>
+            <Field
+              label="牆數"
+              info={<BambuGuide guide={GUIDES.wallLoops} highlight={String(settings.wallLoops)} />}
+            >
+              {numberInput("wallLoops", 1, 10)}
+            </Field>
+            <Field
+              label="頂層數"
+              hint={`頂部約 ${thickness(settings.topLayers)} mm${thinTop ? "，建議至少 0.8" : ""}`}
+              info={<BambuGuide guide={GUIDES.shellLayers} />}
+            >
+              {numberInput("topLayers", 0, 30)}
+            </Field>
+            <Field
+              label="底層數"
+              hint={`底部約 ${thickness(settings.bottomLayers)} mm${thinBottom ? "，建議至少 0.6" : ""}`}
+              info={<BambuGuide guide={GUIDES.shellLayers} />}
+            >
+              {numberInput("bottomLayers", 0, 30)}
+            </Field>
+            <Field
+              label="填充密度"
+              info={<BambuGuide guide={GUIDES.infillDensity} highlight={infillRow(settings.infillDensity)} />}
+            >
+              {numberInput("infillDensity", 0, 100, "%")}
+            </Field>
           </div>
 
-          <Field label="填充圖案">
+          <Field
+            label="填充圖案"
+            info={
+              <BambuGuide
+                guide={GUIDES.infillPattern}
+                highlight={INFILL_PATTERNS.find((p) => p.value === settings.infillPattern)?.label}
+              />
+            }
+          >
             <Select
               value={settings.infillPattern}
               options={INFILL_PATTERNS}
@@ -298,22 +420,40 @@ export default function BambuPanel({
         </Section>
 
         <Section title="支撐與附著" disabled={loading}>
-          <Check checked={settings.support} onChange={(v) => set("support", v)} label="開啟支撐" />
+          <Field label="支撐" info={<BambuGuide guide={GUIDES.support} />}>
+            <Check checked={settings.support} onChange={(v) => set("support", v)} label="開啟支撐" />
+          </Field>
           {settings.support && (
             <>
-              <Field label="支撐類型" hint="樹狀支撐比較好拆，適合公仔、雕像這類有機外形">
+              <Field
+                label="支撐類型"
+                info={
+                  <BambuGuide
+                    guide={GUIDES.supportType}
+                    highlight={SUPPORT_TYPES.find((t) => t.value === settings.supportType)?.label}
+                  />
+                }
+              >
                 <Chips
                   value={settings.supportType}
                   options={SUPPORT_TYPES}
                   onChange={(v) => set("supportType", v as BambuSettings["supportType"])}
                 />
               </Field>
-              <Field label="懸垂角度門檻" hint="比這個角度更平的懸空面才加支撐；0 = 交給 Bambu Studio 自動判斷">
+              <Field
+                label="懸垂角度門檻"
+                hint="數字越大，加的支撐越多；0 = 交給 Bambu Studio 自動判斷"
+                info={<BambuGuide guide={GUIDES.supportAngle} highlight={settings.supportAngle === 0 ? "0" : `${settings.supportAngle}°`} />}
+              >
                 {numberInput("supportAngle", 0, 90, "度")}
               </Field>
             </>
           )}
-          <Field label="Brim（邊緣）" hint="在模型底部外圍多印一圈，幫助小底面或細長的模型黏住平台">
+          <Field
+            label="Brim（邊緣）"
+            hint="在模型底部外圍多印一圈，幫助小底面或細長的模型黏住平台"
+            info={<BambuGuide guide={GUIDES.brim} highlight={BRIM_TYPES.find((b) => b.value === settings.brim)?.label} />}
+          >
             <Chips value={settings.brim} options={BRIM_TYPES} onChange={(v) => set("brim", v as BambuSettings["brim"])} />
           </Field>
         </Section>

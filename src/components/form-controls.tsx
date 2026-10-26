@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 // 設定表單共用的小元件（3D 模型設定、Bambu 設定）
 
 export function Section({ title, disabled, children }: { title: string; disabled?: boolean; children: React.ReactNode }) {
@@ -12,10 +16,38 @@ export function Section({ title, disabled, children }: { title: string; disabled
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+// info：點標籤旁的 ⓘ 才展開的詳細說明
+export function Field({
+  label,
+  hint,
+  info,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  info?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [showInfo, setShowInfo] = useState(false);
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm">{label}</span>
+      <span className="flex items-center gap-1.5 text-sm">
+        {label}
+        {info && (
+          <button
+            type="button"
+            onClick={() => setShowInfo((v) => !v)}
+            aria-expanded={showInfo}
+            aria-label={`${label}的說明`}
+            className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs ${
+              showInfo ? "border-foreground bg-foreground text-background" : "border-zinc-400 text-zinc-500"
+            }`}
+          >
+            i
+          </button>
+        )}
+      </span>
+      {info && showInfo && info}
       {children}
       {hint && <span className="text-sm text-zinc-500">{hint}</span>}
     </div>
