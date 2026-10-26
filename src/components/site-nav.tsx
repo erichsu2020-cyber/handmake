@@ -2,6 +2,7 @@ import Link from "next/link";
 
 // Header 和 Footer 共用
 export const NAV_LINKS = [
+  { href: "/draw", label: "畫圖" },
   { href: "/design", label: "設計 3D 圖" },
   { href: "/create", label: "製作模型" },
   { href: "/bambu", label: "Bambu 設定" },
