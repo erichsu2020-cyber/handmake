@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { upload } from "@vercel/blob/client";
+import DrawingImportNote from "@/components/DrawingImportNote";
 import ModelPanel from "@/components/ModelPanel";
 import type { GenerationView } from "@/lib/generation-view";
 import {
@@ -12,6 +13,7 @@ import {
   type ImageQuality,
   type StylePreset,
 } from "@/lib/image-settings";
+import { useDrawingImport } from "@/lib/use-drawing-import";
 
 export default function CreatePage() {
   const [prompt, setPrompt] = useState("");
@@ -28,6 +30,9 @@ export default function CreatePage() {
     setFile(next);
     setPreview(next ? URL.createObjectURL(next) : null);
   }
+
+  // 從「我的畫作」點「製作模型」過來（?drawing=<id>）：畫作當成上傳的原圖
+  const imported = useDrawingImport(handleFileChange);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -99,6 +104,7 @@ export default function CreatePage() {
           />
         </label>
 
+        <DrawingImportNote state={imported} hasFile={Boolean(file)} label="上傳的圖片" />
         {preview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="上傳的圖片" className="max-h-64 w-fit rounded-lg" />

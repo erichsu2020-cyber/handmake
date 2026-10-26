@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import {
@@ -86,6 +88,7 @@ function initialLayers(initial?: DrawingEditorInitial): Layer[] {
 }
 
 export default function DrawingEditor({ initial }: { initial?: DrawingEditorInitial }) {
+  const router = useRouter();
   const displayRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [layers, setLayersState] = useState<Layer[]>(() => initialLayers(initial));
@@ -455,7 +458,8 @@ export default function DrawingEditor({ initial }: { initial?: DrawingEditorInit
     return canvas;
   }
 
-  async function handleSave() {
+  // 成功回傳畫作 id，失敗回傳 null
+  async function handleSave(): Promise<string | null> {
     setSaving(true);
     setMessage(null);
     const startedAt = changeRef.current;
@@ -502,11 +506,19 @@ export default function DrawingEditor({ initial }: { initial?: DrawingEditorInit
       }
       if (changeRef.current === startedAt) setDirty(false);
       setMessage({ type: "ok", text: "已儲存" });
+      return data.drawing.id as string;
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "儲存失敗" });
+      return null;
     } finally {
       setSaving(false);
     }
+  }
+
+  // 送去設計 3D 圖／製作模型：那邊讀的是已儲存的畫作，所以有沒存的修改就先存
+  async function sendTo(page: "/design" | "/create") {
+    const id = !drawingId || dirty ? await handleSave() : drawingId;
+    if (id) router.push(`${page}?drawing=${id}`);
   }
 
   async function handleDownload() {
@@ -582,6 +594,20 @@ export default function DrawingEditor({ initial }: { initial?: DrawingEditorInit
           className="rounded-lg bg-foreground px-4 py-1.5 text-sm font-medium text-background disabled:opacity-40"
         >
           儲存
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Link href="/drawings" className="text-zinc-500 underline hover:text-foreground">
+          我的畫作
+        </Link>
+        <span className="flex-1" />
+        <span className="text-zinc-500">畫好了？</span>
+        <button type="button" onClick={() => sendTo("/design")} disabled={busy} className={button}>
+          用這張圖設計 3D 圖 →
+        </button>
+        <button type="button" onClick={() => sendTo("/create")} disabled={busy} className={button}>
+          用這張圖製作模型 →
         </button>
       </div>
 

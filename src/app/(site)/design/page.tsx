@@ -17,7 +17,9 @@ import {
   buildDesignPrompt,
   type DesignInput,
 } from "@/lib/design-settings";
+import DrawingImportNote from "@/components/DrawingImportNote";
 import { downloadUrl } from "@/lib/blob-url";
+import { useDrawingImport } from "@/lib/use-drawing-import";
 import type { DesignView } from "@/lib/designs";
 
 const EXAMPLES = [
@@ -42,6 +44,9 @@ export default function DesignPage() {
     setReference(next);
     setReferencePreview(next ? URL.createObjectURL(next) : null);
   }
+
+  // 從「我的畫作」點「設計 3D 圖」過來（?drawing=<id>）：畫作當成參考圖
+  const imported = useDrawingImport(handleReferenceChange);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -138,6 +143,7 @@ export default function DesignPage() {
               className="text-sm file:mr-3 file:rounded-full file:border-0 file:bg-zinc-200 file:px-4 file:py-2 dark:file:bg-zinc-800"
             />
           </Field>
+          <DrawingImportNote state={imported} hasFile={Boolean(reference)} label="參考圖" />
           {referencePreview && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={referencePreview} alt="參考圖片" className="max-h-48 w-fit rounded-lg" />

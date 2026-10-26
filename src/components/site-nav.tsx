@@ -8,6 +8,7 @@ export const NAV_LINKS = [
   { href: "/bambu", label: "Bambu 設定" },
   { href: "/history", label: "歷史紀錄" },
   { href: "/design/history", label: "設計紀錄" },
+  { href: "/drawings", label: "我的畫作" },
 ] as const;
 
 export function Logo() {

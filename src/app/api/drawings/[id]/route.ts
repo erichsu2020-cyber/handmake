@@ -18,6 +18,14 @@ async function findDrawing(ctx: Ctx) {
   return Drawing.findOne({ _id: id, userId: user.id }).lean();
 }
 
+// 讀取一張畫作（設計頁、建立頁帶入畫作時用）
+export async function GET(_request: Request, ctx: Ctx) {
+  const doc = await findDrawing(ctx);
+  if (doc === "unauthorized") return unauthorized();
+  if (!doc) return Response.json({ error: "找不到這張畫作" }, { status: 404 });
+  return Response.json({ drawing: toDrawingView(doc) });
+}
+
 // 更新畫作：沒改過的圖層瀏覽器會沿用原本的網址，換掉的舊檔案在這裡刪掉
 export async function PUT(request: Request, ctx: Ctx) {
   const doc = await findDrawing(ctx);
