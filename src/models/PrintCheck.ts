@@ -5,8 +5,8 @@ const printCheckSchema = new Schema(
   {
     // 建立這筆紀錄的帳號；每個人只看得到自己的紀錄
     userId: { type: Schema.Types.ObjectId, ref: "User", index: true, required: true },
-    // generation：Bambu 設定頁網站模型的 Bambu 檔；upload：Bambu 設定頁上傳模型的 Bambu 檔；file：這頁直接上傳的 3MF
-    sourceType: { type: String, enum: ["generation", "upload", "file"], required: true },
+    // 來源種類見 src/lib/bambu-source.ts 的 BambuSource（file：這頁直接上傳的 3MF）
+    sourceType: { type: String, enum: ["generation", "upload", "check", "file"], required: true },
     sourceId: { type: String },
     sourceName: { type: String, required: true },
     // 檢查的檔案；file 來源時是這筆紀錄自己的檔案（刪除紀錄時一起刪），其他來源是別的紀錄的檔案

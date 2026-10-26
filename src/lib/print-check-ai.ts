@@ -15,6 +15,19 @@ import type { PrintEstimate } from "@/lib/print-estimate";
 
 export const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5";
 
+// 「AI 列印檢查」「成品改良」共用：容易弄反的 Bambu 設定和材料常識（實測 AI 曾把支撐角度門檻的方向弄反）
+export const BAMBU_KNOWLEDGE = `Bambu Studio 設定的正確意思：
+- support_threshold_angle：懸空面跟「水平面」的夾角小於這個角度才加支撐。數字越大，支撐越多；數字越小，支撐越少。0 代表交給 Bambu Studio 自動判斷。要減少支撐就調小（例如 30 → 20），要讓懸空更漂亮就調大。
+- sparse_infill_density 只影響內部填充；強度主要來自 wall_loops（牆數），外觀件降填充通常不影響外觀。
+- seam_position：aligned 會讓接縫排成一直線（明顯但集中），back 放到模型背面（要搭配模型的擺放方向，臉朝哪邊要在 Bambu Studio 確認），nearest 選最近的轉角，random 分散成細小的點。
+- ironing_type 熨燙只對平坦的頂面有用，曲面為主的公仔效果有限，而且會增加時間。
+- brim_type：auto_brim 讓 Bambu Studio 依接觸面積和線材自動判斷，通常是最安全的選擇；no_brim 只適合底面大又穩的模型。
+
+材料常識（Bambu 官方建議）：
+- PETG 建議用紋理 PEI 板，冷卻後容易拆；用光滑 PEI／高溫板時才需要塗膠水隔離，避免黏太緊損傷板面。
+- PLA 在密閉機箱（P1S、X1C、H2S 等）長時間列印要開門或開上蓋散熱，避免軟化堵頭。
+- ABS、ASA 需要密閉機箱並注意通風；TPU 速度要慢，通常不經過 AMS。`;
+
 const INSTRUCTIONS = `你是 Bambu Lab 3D 列印的資深工程師，要幫使用者判斷一個 Bambu Studio 專案能不能成功列印、符不符合產品需求。
 
 請根據提供的「列印設定」「模型幾何數據」「粗估成本」「產品需求」和模型截圖，從以下五個面向評估：
@@ -39,17 +52,8 @@ const INSTRUCTIONS = `你是 Bambu Lab 3D 列印的資深工程師，要幫使�
     不要寫英文欄位名稱或程式寫法（例如 seam_position=aligned、overhangRatio、openEdges=0）；英文欄位名稱只用在 changes 的 key。
     設定值也用中文說明（例如「接縫對齊」「樹狀支撐」），數字可以保留。
 
-Bambu Studio 設定的正確意思：
-- support_threshold_angle：懸空面跟「水平面」的夾角小於這個角度才加支撐。數字越大，支撐越多；數字越小，支撐越少。0 代表交給 Bambu Studio 自動判斷。要減少支撐就調小（例如 30 → 20），要讓懸空更漂亮就調大。
-- sparse_infill_density 只影響內部填充；強度主要來自 wall_loops（牆數），外觀件降填充通常不影響外觀。
-- seam_position：aligned 會讓接縫排成一直線（明顯但集中），back 放到模型背面（要搭配模型的擺放方向，臉朝哪邊要在 Bambu Studio 確認），nearest 選最近的轉角，random 分散成細小的點。
-- ironing_type 熨燙只對平坦的頂面有用，曲面為主的公仔效果有限，而且會增加時間。
-- brim_type：auto_brim 讓 Bambu Studio 依接觸面積和線材自動判斷，通常是最安全的選擇；no_brim 只適合底面大又穩的模型。
+${BAMBU_KNOWLEDGE}`;
 
-材料常識（Bambu 官方建議）：
-- PETG 建議用紋理 PEI 板，冷卻後容易拆；用光滑 PEI／高溫板時才需要塗膠水隔離，避免黏太緊損傷板面。
-- PLA 在密閉機箱（P1S、X1C、H2S 等）長時間列印要開門或開上蓋散熱，避免軟化堵頭。
-- ABS、ASA 需要密閉機箱並注意通風；TPU 速度要慢，通常不經過 AMS。`;
 
 function reportSchema() {
   return {

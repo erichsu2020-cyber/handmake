@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
+import BambuSourcePicker, { type BambuFileOption, type PickedBambuFile } from "@/components/BambuSourcePicker";
 import { Field, Section } from "@/components/form-controls";
-import { readBambuProject } from "@/lib/bambu-project-read";
-import { renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
+import { readJson, uploadToBlob, useElapsedSeconds } from "@/lib/analysis-client";
+import type { Snapshot } from "@/lib/model-snapshots";
 import {
   DEFAULT_REQUIREMENTS,
   ENVIRONMENTS,
-  MAX_PRINT_CHECK_UPLOAD_BYTES,
   PRINT_CHECK_SNAPSHOT_FOLDER,
   PRINT_CHECK_UPLOAD_FOLDER,
   PRIORITIES,
@@ -21,90 +20,20 @@ import {
 
 // 「AI 列印檢查」表單：選 Bambu 檔 → 自動拍 4 張截圖 → 填需求 → 送出（AI 約需 1–3 分鐘）→ 跳到報告
 
-export type CheckSourceOption = {
-  type: "generation" | "upload";
-  id: string;
-  name: string;
-  fileUrl: string;
-  imageUrl?: string;
-  summary: string; // 例如「Bambu Lab H2S・0.4 mm・PETG HF・層高 0.16」
-};
-
-type Selected = { kind: "site"; option: CheckSourceOption } | { kind: "file"; file: File };
-
-const name = (s: Selected) => (s.kind === "site" ? s.option.name : s.file.name);
-
-export default function PrintCheckForm({ sources }: { sources: CheckSourceOption[] }) {
+export default function PrintCheckForm({ sources }: { sources: BambuFileOption[] }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [selected, setSelected] = useState<Selected | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const [projectInfo, setProjectInfo] = useState<string | null>(null);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [picked, setPicked] = useState<{ file: PickedBambuFile; snapshots: Snapshot[] } | null>(null);
   const [requirements, setRequirements] = useState<PrintRequirements>(DEFAULT_REQUIREMENTS);
   const [phase, setPhase] = useState<"idle" | "uploading" | "analyzing">("idle");
-  const [elapsed, setElapsed] = useState(0);
+  const elapsed = useElapsedSeconds(phase === "analyzing");
   const [error, setError] = useState<string | null>(null);
 
   const set = <K extends keyof PrintRequirements>(key: K, value: PrintRequirements[K]) =>
     setRequirements((r) => ({ ...r, [key]: value }));
 
-  // 換檔案時釋放舊截圖的網址
-  useEffect(() => () => snapshots.forEach((s) => URL.revokeObjectURL(s.url)), [snapshots]);
-
-  // AI 分析中：每秒更新經過時間
-  useEffect(() => {
-    if (phase !== "analyzing") return;
-    const started = Date.now();
-    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  // 選好檔案：在瀏覽器讀出模型和設定，拍 4 張截圖（跟送給 AI 的一樣）
-  async function choose(next: Selected) {
-    setSelected(next);
-    setSnapshots([]);
-    setProjectInfo(null);
-    setError(null);
-    if (next.kind === "file") {
-      if (!next.file.name.toLowerCase().endsWith(".3mf")) {
-        setError("請選擇 Bambu Studio 的 .3mf 專案檔");
-        return;
-      }
-      if (next.file.size > MAX_PRINT_CHECK_UPLOAD_BYTES) {
-        setError(`檔案不能超過 ${MAX_PRINT_CHECK_UPLOAD_BYTES / 1024 / 1024}MB`);
-        return;
-      }
-    }
-    setPreparing(true);
-    try {
-      const bytes =
-        next.kind === "site"
-          ? new Uint8Array(await (await fetch(next.option.fileUrl)).arrayBuffer())
-          : new Uint8Array(await next.file.arrayBuffer());
-      const project = readBambuProject(bytes);
-      if (!project.config) {
-        throw new Error("這個 3MF 沒有 Bambu Studio 設定。請在 Bambu Studio 用「另存專案」存成 3MF，或先到「Bambu 設定」產生");
-      }
-      const c = project.config;
-      const first = (v: unknown) => String(Array.isArray(v) ? v[0] : (v ?? ""));
-      setProjectInfo(
-        [first(c.printer_settings_id), first(c.filament_settings_id), c.layer_height && `層高 ${first(c.layer_height)} mm`, `${project.objectCount} 個物件`]
-          .filter(Boolean)
-          .join("・"),
-      );
-      setSnapshots(await renderSnapshots(project.meshes));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "讀取檔案失敗");
-    } finally {
-      setPreparing(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!selected || snapshots.length === 0) {
+    if (!picked) {
       setError("請先選擇要檢查的檔案");
       return;
     }
@@ -116,29 +45,26 @@ export default function PrintCheckForm({ sources }: { sources: CheckSourceOption
     setError(null);
     setPhase("uploading");
     try {
-      // 檔案和截圖直接從瀏覽器上傳到 Vercel Blob，不經過伺服器（Vercel 函式的請求上限只有 4.5MB）
-      const put = (path: string, body: Blob, contentType: string) =>
-        upload(path, body, { access: "public", handleUploadUrl: "/api/blob-upload", contentType }).then((b) => b.url);
+      const { file, snapshots } = picked;
       const [fileUrl, ...snapshotUrls] = await Promise.all([
-        selected.kind === "file" ? put(`${PRINT_CHECK_UPLOAD_FOLDER}project.3mf`, selected.file, "model/3mf") : null,
-        ...snapshots.map((s) => put(`${PRINT_CHECK_SNAPSHOT_FOLDER}${s.id}.jpg`, s.blob, "image/jpeg")),
+        file.kind === "file" ? uploadToBlob(`${PRINT_CHECK_UPLOAD_FOLDER}project.3mf`, file.file, "model/3mf") : null,
+        ...snapshots.map((s) => uploadToBlob(`${PRINT_CHECK_SNAPSHOT_FOLDER}${s.id}.jpg`, s.blob, "image/jpeg")),
       ]);
 
       setPhase("analyzing");
-      setElapsed(0);
       const res = await fetch("/api/print-checks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source:
-            selected.kind === "site"
-              ? { type: selected.option.type, id: selected.option.id }
-              : { type: "file", url: fileUrl, name: selected.file.name },
+            file.kind === "site"
+              ? { type: file.option.type, id: file.option.id }
+              : { type: "file", url: fileUrl, name: file.file.name },
           requirements: parsed,
           snapshotUrls,
         }),
       });
-      const data = await res.json().catch(() => ({ error: `伺服器沒有回應 (${res.status})，可能是分析太久被中斷，請再試一次` }));
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error ?? "檢查失敗");
       router.push(`/print-checks/${data.check.id}`);
     } catch (err) {
@@ -165,77 +91,7 @@ export default function PrintCheckForm({ sources }: { sources: CheckSourceOption
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <Section title="1. 選擇 Bambu Studio 檔案" disabled={busy}>
-        {sources.length > 0 && (
-          <Field label="「Bambu 設定」頁產生過的檔案">
-            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {sources.map((s) => {
-                const active = selected?.kind === "site" && selected.option.type === s.type && selected.option.id === s.id;
-                return (
-                  <li key={`${s.type}:${s.id}`}>
-                    <button
-                      type="button"
-                      onClick={() => choose({ kind: "site", option: s })}
-                      className={`flex w-full items-center gap-3 rounded-lg border p-2 text-left text-sm ${
-                        active ? "border-foreground ring-2 ring-foreground" : "border-zinc-300 dark:border-zinc-700"
-                      }`}
-                    >
-                      {s.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={s.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded bg-white object-contain" />
-                      ) : (
-                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-zinc-100 text-xs text-zinc-500 dark:bg-zinc-900">
-                          3MF
-                        </span>
-                      )}
-                      <span className="flex min-w-0 flex-col">
-                        <span className="line-clamp-1 font-medium">{s.name}</span>
-                        <span className="line-clamp-2 text-xs text-zinc-500">{s.summary}</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </Field>
-        )}
-        <Field label="或從電腦上傳" hint="Bambu Studio 的 .3mf 專案檔（檔案 → 另存專案），50MB 以內">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className={chip(selected?.kind === "file")}
-            >
-              {selected?.kind === "file" ? `已選擇：${selected.file.name}` : "選擇 3MF 檔"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".3mf"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && choose({ kind: "file", file: e.target.files[0] })}
-            />
-          </div>
-        </Field>
-
-        {preparing && <p className="text-sm text-zinc-500">讀取模型並拍攝截圖中…</p>}
-        {selected && snapshots.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm">
-              <span className="font-medium">{name(selected)}</span>
-              {projectInfo && <span className="text-zinc-500">・{projectInfo}</span>}
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {snapshots.map((s) => (
-                <figure key={s.id} className="flex flex-col gap-1">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={s.url} alt={s.label} className="aspect-square w-full rounded-lg border border-zinc-300 dark:border-zinc-700" />
-                  <figcaption className="text-center text-xs text-zinc-500">{s.label}</figcaption>
-                </figure>
-              ))}
-            </div>
-            <p className="text-xs text-zinc-500">AI 會看到這 4 張截圖，格線是列印平台。</p>
-          </div>
-        )}
+        <BambuSourcePicker groups={[{ label: "「Bambu 設定」頁產生過的檔案", options: sources }]} onChange={setPicked} />
       </Section>
 
       <Section title="2. 產品需求" disabled={busy}>
@@ -315,7 +171,7 @@ export default function PrintCheckForm({ sources }: { sources: CheckSourceOption
 
       <button
         type="submit"
-        disabled={busy || preparing}
+        disabled={busy || !picked}
         className="h-12 rounded-full bg-foreground px-6 font-medium text-background transition-opacity disabled:opacity-50"
       >
         {phase === "uploading"

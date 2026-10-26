@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import PrintCheckForm, { type CheckSourceOption } from "@/components/PrintCheckForm";
+import PrintCheckForm from "@/components/PrintCheckForm";
 import { requireUser } from "@/lib/auth";
-import { findPrinter, type BambuSettings } from "@/lib/bambu-settings";
-import { listBambuUploads } from "@/lib/bambu-uploads";
-import { listBambuModels } from "@/lib/generations";
+import { listBambuFileOptions } from "@/lib/bambu-file-options";
 
 export const metadata = { title: "AI 列印檢查 | 小物屋" };
 
@@ -30,34 +28,9 @@ export default function PrintCheckPage() {
   );
 }
 
-const describe = (s: BambuSettings) =>
-  [findPrinter(s.printer)?.label, s.nozzle && `${s.nozzle} mm`, `Bambu ${s.filament}`, `層高 ${s.layerHeight}`].filter(Boolean).join("・");
-
 async function Form() {
   await connection(); // 每次都讀最新資料
   const user = await requireUser();
-  const [generations, uploads] = await Promise.all([listBambuModels(user.id), listBambuUploads(user.id)]);
   // 只列出已經在「Bambu 設定」頁產生過 Bambu 檔的模型
-  const sources: CheckSourceOption[] = [
-    ...generations.flatMap((g) =>
-      g.bambu
-        ? [
-            {
-              type: "generation" as const,
-              id: g.id,
-              name: g.prompt || (g.mode === "image" ? "（上傳圖片）" : "（無描述）"),
-              fileUrl: g.bambu.fileUrl,
-              imageUrl: g.outputImageUrl,
-              summary: describe(g.bambu.settings),
-            },
-          ]
-        : [],
-    ),
-    ...uploads.flatMap((u) =>
-      u.bambu
-        ? [{ type: "upload" as const, id: u.id, name: u.name, fileUrl: u.bambu.fileUrl, summary: describe(u.bambu.settings) }]
-        : [],
-    ),
-  ];
-  return <PrintCheckForm sources={sources} />;
+  return <PrintCheckForm sources={await listBambuFileOptions(user.id)} />;
 }

@@ -1,3 +1,4 @@
+import SettingChangesTable from "@/components/SettingChangesTable";
 import { downloadUrl } from "@/lib/blob-url";
 import {
   CHECK_CATEGORIES,
@@ -5,7 +6,6 @@ import {
   PRIORITIES,
   RATINGS,
   VERDICTS,
-  formatSettingValue,
   type Rating,
 } from "@/lib/print-check-settings";
 import type { PrintCheckView } from "@/lib/print-checks";
@@ -26,8 +26,6 @@ const labels = (list: readonly { value: string; label: string }[], values: strin
 export default function PrintCheckReport({ check }: { check: PrintCheckView }) {
   const { report, geometry: g, estimate: e, requirements: r } = check;
   const verdict = VERDICTS[report.verdict];
-  const reasonOf = (key: string) => report.changes.find((c) => c.key === key)?.reason ?? "";
-  const unit = (key: string) => check.settings.find((s) => s.key === key)?.unit ?? "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,43 +64,7 @@ export default function PrintCheckReport({ check }: { check: PrintCheckView }) {
       {(check.applied.length > 0 || check.rejected.length > 0) && (
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold">設定修改</h2>
-          <div className="overflow-x-auto rounded-lg border border-zinc-300 dark:border-zinc-700">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-foreground/5 text-zinc-500">
-                <tr>
-                  <th className="p-2.5 font-normal">設定</th>
-                  <th className="p-2.5 font-normal">目前設定</th>
-                  <th className="p-2.5 font-normal">建議設定</th>
-                  <th className="p-2.5 font-normal">修改原因</th>
-                </tr>
-              </thead>
-              <tbody>
-                {check.applied.map((a) => (
-                  <tr key={a.key} className="border-t border-zinc-200 align-top dark:border-zinc-800">
-                    <td className="whitespace-nowrap p-2.5 font-medium">{a.label}</td>
-                    <td className="whitespace-nowrap p-2.5 text-zinc-500">
-                      {formatSettingValue(a.key, a.from)}
-                      {a.from !== "（預設）" && unit(a.key)}
-                    </td>
-                    <td className="whitespace-nowrap p-2.5 font-medium text-accent">
-                      {formatSettingValue(a.key, a.to)}
-                      {unit(a.key)}
-                    </td>
-                    <td className="p-2.5">{reasonOf(a.key)}</td>
-                  </tr>
-                ))}
-                {check.rejected.map((x) => (
-                  <tr key={`rejected-${x.key}-${x.value}`} className="border-t border-zinc-200 align-top text-zinc-500 dark:border-zinc-800">
-                    <td className="p-2.5">{check.settings.find((s) => s.key === x.key)?.label ?? x.key}</td>
-                    <td className="p-2.5" colSpan={2}>
-                      未套用：AI 建議 {formatSettingValue(x.key, x.value)}，但{x.reason}
-                    </td>
-                    <td className="p-2.5">{reasonOf(x.key)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SettingChangesTable applied={check.applied} rejected={check.rejected} changes={report.changes} settings={check.settings} />
         </section>
       )}
 
