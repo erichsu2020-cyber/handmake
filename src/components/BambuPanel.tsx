@@ -11,9 +11,12 @@ import {
   PLATES,
   QUICK_PRESETS,
   SUPPORT_TYPES,
+  DEFAULT_NOZZLE,
   applyQuickPreset,
   findFilament,
+  findNozzle,
   findPrinter,
+  findSetup,
   nearestLayerHeight,
   parseBambuSettings,
   withDefaultTemps,
@@ -42,7 +45,8 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
   const model = models.find((m) => m.id === selectedId) ?? models[0];
   const bambu = results[model.id] ?? model.bambu;
   const printer = findPrinter(settings.printer) ?? BAMBU_PRINTERS[0];
-  const filament = findFilament(printer, settings.filament) ?? printer.filaments[0];
+  const nozzle = findNozzle(printer, settings.nozzle) ?? printer.nozzles[0];
+  const filament = findFilament(nozzle, settings.filament) ?? nozzle.filaments[0];
 
   const set = <K extends keyof BambuSettings>(key: K, value: BambuSettings[K]) =>
     setSettings((s) => ({ ...s, [key]: value }));
@@ -53,23 +57,27 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
     setError(null);
   }
 
-  // 換印表機：線材沒有就換第一種、層高換最接近的、溫度改回官方建議值
-  function changePrinter(id: string) {
-    const next = findPrinter(id);
-    if (!next) return;
+  // 換印表機或噴嘴：噴嘴沒有就用 0.4（或第一個）、線材沒有就換第一種、層高換最接近的、溫度改回官方建議值
+  function changeSetup(printerId: string, diameter: number) {
+    const nextPrinter = findPrinter(printerId);
+    if (!nextPrinter) return;
+    const nextNozzle =
+      findNozzle(nextPrinter, diameter) ?? findNozzle(nextPrinter, DEFAULT_NOZZLE) ?? nextPrinter.nozzles[0];
     setSettings((s) =>
       fixPlate({
         ...s,
-        printer: id,
-        filament: findFilament(next, s.filament) ? s.filament : next.filaments[0].id,
-        layerHeight: nearestLayerHeight(next, s.layerHeight),
+        printer: printerId,
+        nozzle: nextNozzle.diameter,
+        filament: findFilament(nextNozzle, s.filament) ? s.filament : nextNozzle.filaments[0].id,
+        layerHeight: nearestLayerHeight(nextNozzle, s.layerHeight),
       }),
     );
   }
 
   // 新線材不適合目前的列印板（官方溫度是 0）就換回紋理 PEI 板，再帶入官方溫度
   function fixPlate(s: BambuSettings) {
-    const f = findFilament(findPrinter(s.printer)!, s.filament);
+    const setup = findSetup(s);
+    const f = setup && findFilament(setup.nozzle, s.filament);
     const plate = f && f.bedTemp[s.plate] === 0 ? "textured" : s.plate;
     return withDefaultTemps({ ...s, plate });
   }
@@ -78,13 +86,13 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
     (Object.keys(p.settings) as (keyof typeof p.settings)[]).every(
       (key) =>
         key === "layerHeight"
-          ? settings.layerHeight === nearestLayerHeight(printer, p.settings.layerHeight)
+          ? settings.layerHeight === nearestLayerHeight(nozzle, p.settings.layerHeight)
           : settings[key] === p.settings[key],
     ),
   )?.value;
 
   const dims = model.model3d?.dimensionsMm;
-  const tooBig = dims && dims.some((v, i) => v > printer.bed[i]);
+  const tooBig = dims && dims.some((v, i) => v > nozzle.bed[i]);
   const [nozzleLow, nozzleHigh] = filament.nozzleRange;
 
   async function handleSubmit() {
@@ -157,11 +165,18 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
         <h2 className="text-xl font-semibold">2. 調整列印設定</h2>
 
         <Section title="印表機與線材" disabled={loading}>
-          <Field label="印表機（0.4 噴嘴）" hint={`列印範圍 ${printer.bed.join("×")} mm`}>
+          <Field label="印表機" hint={`列印範圍 ${nozzle.bed.join("×")} mm`}>
             <Select
               value={printer.id}
               options={BAMBU_PRINTERS.map((p) => ({ value: p.id, label: p.label }))}
-              onChange={changePrinter}
+              onChange={(id) => changeSetup(id, settings.nozzle)}
+            />
+          </Field>
+          <Field label="噴嘴" hint="小噴嘴細節較好但較慢；大噴嘴較快、較堅固，適合大型模型">
+            <Chips
+              value={String(nozzle.diameter)}
+              options={printer.nozzles.map((n) => ({ value: String(n.diameter), label: `${n.diameter} mm` }))}
+              onChange={(v) => changeSetup(printer.id, Number(v))}
             />
           </Field>
           {tooBig && (
@@ -173,7 +188,7 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
           <Field label="線材">
             <Select
               value={filament.id}
-              options={printer.filaments.map((f) => ({ value: f.id, label: `Bambu ${f.id}` }))}
+              options={nozzle.filaments.map((f) => ({ value: f.id, label: `Bambu ${f.id}` }))}
               onChange={(id) => setSettings((s) => fixPlate({ ...s, filament: id }))}
             />
           </Field>
@@ -219,7 +234,7 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
           <Field label="層高" hint="越小越細緻，但列印時間越長">
             <Chips
               value={String(settings.layerHeight)}
-              options={printer.layerHeights.map((h) => ({ value: String(h), label: `${h.toFixed(2)} mm` }))}
+              options={nozzle.layerHeights.map((h) => ({ value: String(h), label: `${h.toFixed(2)} mm` }))}
               onChange={(v) => set("layerHeight", Number(v))}
             />
           </Field>
@@ -284,7 +299,7 @@ export default function BambuPanel({ models }: { models: GenerationView[] }) {
           <p className="text-sm text-zinc-500">
             {new Date(bambu.updatedAt).toLocaleString("zh-TW", { dateStyle: "short", timeStyle: "short" })} 產生
             {bambu.fileSizeBytes ? `・${formatMb(bambu.fileSizeBytes)}` : ""}・
-            {findPrinter(bambu.settings.printer)?.label}・Bambu {bambu.settings.filament}・層高 {bambu.settings.layerHeight} mm
+            {findPrinter(bambu.settings.printer)?.label}・{bambu.settings.nozzle} mm 噴嘴・Bambu {bambu.settings.filament}・層高 {bambu.settings.layerHeight} mm
           </p>
           <a
             href={downloadUrl(bambu.fileUrl)}

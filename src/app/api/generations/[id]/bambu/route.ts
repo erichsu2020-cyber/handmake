@@ -41,7 +41,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/generations
 
   let output: Buffer;
   try {
-    output = writeBambu3mf(input, settings);
+    output = await writeBambu3mf(input, settings);
   } catch (error) {
     // 模型放不進平台等原因，訊息直接給使用者看
     console.error("寫入 Bambu 設定失敗", error);

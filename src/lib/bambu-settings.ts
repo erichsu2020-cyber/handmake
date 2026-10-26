@@ -4,9 +4,12 @@ import catalog from "@/data/bambu-catalog.json";
 // 用 Bambu Studio 打開就會自動套用。印表機與線材清單來自 scripts/bambu-profiles.mts
 
 export type BambuPrinter = (typeof catalog.printers)[number];
-export type BambuFilament = BambuPrinter["filaments"][number];
+export type BambuNozzle = BambuPrinter["nozzles"][number];
+export type BambuFilament = BambuNozzle["filaments"][number];
 
+// 第一個是預設印表機（H2S）
 export const BAMBU_PRINTERS: BambuPrinter[] = catalog.printers;
+export const DEFAULT_NOZZLE = 0.4;
 export const BAMBU_PROFILE_VERSION = catalog.version;
 
 export const PLATES = [
@@ -45,6 +48,7 @@ export type BrimType = (typeof BRIM_TYPES)[number]["value"];
 
 export type BambuSettings = {
   printer: string;
+  nozzle: number; // 噴嘴直徑（mm）
   filament: string;
   plate: PlateType;
   layerHeight: number;
@@ -87,34 +91,43 @@ export const QUICK_PRESETS: { value: string; label: string; settings: Pick<Bambu
 ];
 
 export const findPrinter = (id: string) => BAMBU_PRINTERS.find((p) => p.id === id);
-export const findFilament = (printer: BambuPrinter, id: string) => printer.filaments.find((f) => f.id === id);
+export const findNozzle = (printer: BambuPrinter, diameter: number) => printer.nozzles.find((n) => n.diameter === diameter);
+export const findFilament = (nozzle: BambuNozzle, id: string) => nozzle.filaments.find((f) => f.id === id);
 
-// 印表機沒有這個層高時（例如 P2S 沒有 0.28），用最接近的
-export const nearestLayerHeight = (printer: BambuPrinter, layerHeight: number) =>
-  printer.layerHeights.reduce((best, h) => (Math.abs(h - layerHeight) < Math.abs(best - layerHeight) ? h : best));
+// 依設定找出印表機＋噴嘴，找不到回傳 null
+export function findSetup(s: Pick<BambuSettings, "printer" | "nozzle">) {
+  const printer = findPrinter(s.printer);
+  const nozzle = printer && findNozzle(printer, s.nozzle);
+  return printer && nozzle ? { printer, nozzle } : null;
+}
+
+// 噴嘴沒有這個層高時（例如 0.6 噴嘴沒有 0.20），用最接近的
+export const nearestLayerHeight = (nozzle: BambuNozzle, layerHeight: number) =>
+  nozzle.layerHeights.reduce((best, h) => (Math.abs(h - layerHeight) < Math.abs(best - layerHeight) ? h : best));
 
 // 套用快速預設：品質相關的欄位換掉，印表機、線材、溫度、支撐不動
 export function applyQuickPreset(settings: BambuSettings, presetValue: string): BambuSettings {
   const preset = QUICK_PRESETS.find((p) => p.value === presetValue);
-  const printer = findPrinter(settings.printer);
-  if (!preset || !printer) return settings;
+  const setup = findSetup(settings);
+  if (!preset || !setup) return settings;
   return {
     ...settings,
     ...preset.settings,
-    layerHeight: nearestLayerHeight(printer, preset.settings.layerHeight),
+    layerHeight: nearestLayerHeight(setup.nozzle, preset.settings.layerHeight),
   };
 }
 
-// 換印表機、線材或列印板時，溫度改回官方建議值
+// 換印表機、噴嘴、線材或列印板時，溫度改回官方建議值
 export function withDefaultTemps(settings: BambuSettings): BambuSettings {
-  const printer = findPrinter(settings.printer);
-  const filament = printer && findFilament(printer, settings.filament);
+  const setup = findSetup(settings);
+  const filament = setup && findFilament(setup.nozzle, settings.filament);
   if (!filament) return settings;
   return { ...settings, nozzleTemp: filament.nozzleTemp, bedTemp: filament.bedTemp[settings.plate] };
 }
 
 export const DEFAULT_BAMBU_SETTINGS: BambuSettings = withDefaultTemps({
-  printer: "A1",
+  printer: BAMBU_PRINTERS[0].id,
+  nozzle: DEFAULT_NOZZLE,
   filament: "PLA Basic",
   plate: "textured",
   ...QUICK_PRESETS[1].settings,
@@ -134,13 +147,15 @@ export function parseBambuSettings(input: unknown): BambuSettings | string {
 
   const printer = findPrinter(s.printer);
   if (!printer) return "印表機選項不正確";
-  const filament = findFilament(printer, s.filament);
-  if (!filament) return `${printer.label} 沒有 ${s.filament} 的官方設定`;
+  const nozzle = findNozzle(printer, s.nozzle);
+  if (!nozzle) return `${printer.label} 沒有 ${s.nozzle} mm 噴嘴的官方設定`;
+  const filament = findFilament(nozzle, s.filament);
+  if (!filament) return `${printer.label} ${s.nozzle} mm 噴嘴沒有 ${s.filament} 的官方設定`;
   if (!PLATES.some((p) => p.value === s.plate)) return "列印板選項不正確";
   if (filament.bedTemp[s.plate] === 0) return `${s.filament} 不建議用這種列印板`;
 
-  if (!printer.layerHeights.includes(s.layerHeight)) {
-    return `${printer.label} 的層高只能選 ${printer.layerHeights.join("、")} mm`;
+  if (!nozzle.layerHeights.includes(s.layerHeight)) {
+    return `${s.nozzle} mm 噴嘴的層高只能選 ${nozzle.layerHeights.join("、")} mm`;
   }
   if (!isInt(s.wallLoops, 1, 10)) return "牆數要介於 1–10";
   if (!isInt(s.topLayers, 0, 30)) return "頂層數要介於 0–30";

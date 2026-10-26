@@ -1,7 +1,6 @@
 import "server-only";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
-import profiles from "@/data/bambu-profiles.json";
-import { PLATES, type BambuSettings } from "@/lib/bambu-settings";
+import { PLATES, findSetup, type BambuSettings } from "@/lib/bambu-settings";
 import { boundsSize, meshBounds, parseModel } from "@/lib/mesh";
 
 // 把 Bambu Studio 設定寫進 3MF：用 Bambu Studio 打開就會套用印表機、線材和列印參數
@@ -12,7 +11,10 @@ import { boundsSize, meshBounds, parseModel } from "@/lib/mesh";
 
 type Config = Record<string, unknown>;
 type Profile = { name: string; config: Config };
-type PrinterProfiles = (typeof profiles.printers)[number] & {
+// scripts/bambu-profiles.mts 產生的 src/data/bambu/<印表機>-<噴嘴>.json
+type NozzleProfiles = {
+  machine: string;
+  bed: number[];
   config: Config;
   processes: (Profile & { layerHeight: number })[];
   filaments: (Profile & { id: string })[];
@@ -30,34 +32,49 @@ const PLATE_TEMP_KEYS = {
   cool: "cool_plate_temp",
 } as const;
 
-function buildProjectConfig(s: BambuSettings) {
-  const printer = (profiles.printers as PrinterProfiles[]).find((p) => p.id === s.printer);
-  const process = printer?.processes.find((p) => p.layerHeight === s.layerHeight);
-  const filament = printer?.filaments.find((f) => f.id === s.filament);
-  if (!printer || !process || !filament) throw new Error("找不到對應的 Bambu 官方預設");
+// 每台印表機＋噴嘴一個檔案（約 100KB），只載入需要的那一個
+async function loadProfiles(s: BambuSettings): Promise<NozzleProfiles> {
+  const nozzle = s.nozzle.toFixed(1);
+  // 用相對路徑，打包工具才認得出這是 src/data/bambu/ 底下的 JSON
+  const mod = await import(`../data/bambu/${s.printer}-${nozzle}.json`);
+  return mod.default as NozzleProfiles;
+}
+
+// 官方設定的值有的是字串、有的是陣列；陣列（例如 H2S 依噴嘴類型分成好幾組）每一組都要換掉
+const fill = (base: unknown, value: number | string) =>
+  Array.isArray(base) ? base.map(() => String(value)) : String(value);
+// 跟官方預設差一樣多（官方首層常常比其它層低或高幾度），陣列每一組各自位移
+const shift = (base: unknown, delta: number) =>
+  Array.isArray(base) ? base.map((v) => String(Number(v) + delta)) : String(Number(base) + delta);
+
+function buildProjectConfig(profiles: NozzleProfiles, s: BambuSettings) {
+  const process = profiles.processes.find((p) => p.layerHeight === s.layerHeight);
+  const filament = profiles.filaments.find((f) => f.id === s.filament);
+  if (!process || !filament) throw new Error("找不到對應的 Bambu 官方預設");
+  const p = process.config;
+  const f = filament.config;
 
   const processChanges: Config = {
-    wall_loops: String(s.wallLoops),
-    top_shell_layers: String(s.topLayers),
-    bottom_shell_layers: String(s.bottomLayers),
-    sparse_infill_density: `${s.infillDensity}%`,
-    sparse_infill_pattern: s.infillPattern,
-    enable_support: s.support ? "1" : "0",
-    support_type: s.supportType,
-    support_threshold_angle: String(s.supportAngle),
-    brim_type: s.brim,
+    wall_loops: fill(p.wall_loops, s.wallLoops),
+    top_shell_layers: fill(p.top_shell_layers, s.topLayers),
+    bottom_shell_layers: fill(p.bottom_shell_layers, s.bottomLayers),
+    sparse_infill_density: fill(p.sparse_infill_density, `${s.infillDensity}%`),
+    sparse_infill_pattern: fill(p.sparse_infill_pattern, s.infillPattern),
+    enable_support: fill(p.enable_support, s.support ? "1" : "0"),
+    support_type: fill(p.support_type, s.supportType),
+    support_threshold_angle: fill(p.support_threshold_angle, s.supportAngle),
+    brim_type: fill(p.brim_type, s.brim),
   };
 
-  // 使用者只調一個溫度：其它層用這個值，首層跟官方預設差一樣多（官方首層常常比其它層低或高幾度）
-  const nozzleDelta = s.nozzleTemp - first(filament.config.nozzle_temperature);
+  // 使用者只調一個溫度：其它層用這個值，首層跟著位移
+  const nozzleDelta = s.nozzleTemp - first(f.nozzle_temperature);
   const bedKey = PLATE_TEMP_KEYS[s.plate];
-  const bedDelta = s.bedTemp - first(filament.config[bedKey]);
-  const shifted = (key: string, delta: number) => [String(first(filament.config[key]) + delta)];
+  const bedDelta = s.bedTemp - first(f[bedKey]);
   const filamentChanges: Config = {
-    nozzle_temperature: [String(s.nozzleTemp)],
-    nozzle_temperature_initial_layer: shifted("nozzle_temperature_initial_layer", nozzleDelta),
-    [bedKey]: [String(s.bedTemp)],
-    [`${bedKey}_initial_layer`]: shifted(`${bedKey}_initial_layer`, bedDelta),
+    nozzle_temperature: fill(f.nozzle_temperature, s.nozzleTemp),
+    nozzle_temperature_initial_layer: shift(f.nozzle_temperature_initial_layer, nozzleDelta),
+    [bedKey]: fill(f[bedKey], s.bedTemp),
+    [`${bedKey}_initial_layer`]: shift(f[`${bedKey}_initial_layer`], bedDelta),
   };
 
   // 跟官方預設不一樣的欄位，Bambu Studio 會在介面上標示成「已修改」
@@ -67,34 +84,35 @@ function buildProjectConfig(s: BambuSettings) {
       .join(";");
 
   return {
-    ...printer.config,
-    ...filament.config,
+    ...profiles.config,
+    ...f,
     ...filamentChanges,
-    ...process.config,
+    ...p,
     ...processChanges,
-    curr_bed_type: PLATES.find((p) => p.value === s.plate)!.bedType,
-    printer_settings_id: printer.machine,
+    curr_bed_type: PLATES.find((plate) => plate.value === s.plate)!.bedType,
+    printer_settings_id: profiles.machine,
     print_settings_id: process.name,
     filament_settings_id: [filament.name],
     inherits_group: ["", "", ""],
-    different_settings_to_system: [changed(process.config, processChanges), changed(filament.config, filamentChanges), ""],
+    different_settings_to_system: [changed(p, processChanges), changed(f, filamentChanges), ""],
     from: "project",
     name: "project_settings",
     version: PROJECT_VERSION,
   };
 }
 
-export function writeBambu3mf(input: Buffer, s: BambuSettings): Buffer {
-  const printer = profiles.printers.find((p) => p.id === s.printer);
-  if (!printer) throw new Error("印表機選項不正確");
+export async function writeBambu3mf(input: Buffer, s: BambuSettings): Promise<Buffer> {
+  const setup = findSetup(s);
+  if (!setup) throw new Error("印表機或噴嘴選項不正確");
+  const profiles = await loadProfiles(s);
 
   const bounds = meshBounds(parseModel("3MF", input));
   const size = boundsSize(bounds);
-  const [bedX, bedY, bedZ] = printer.bed;
+  const [bedX, bedY, bedZ] = profiles.bed;
   if (size[0] > bedX || size[1] > bedY || size[2] > bedZ) {
     const mm = (v: number) => Math.round(v);
     throw new Error(
-      `模型 ${size.map(mm).join("×")} mm 放不進 ${printer.label} 的平台 ${printer.bed.join("×")} mm，請先在第 2 步縮小尺寸`,
+      `模型 ${size.map(mm).join("×")} mm 放不進 ${setup.printer.label} 的平台 ${profiles.bed.join("×")} mm，請先在第 2 步縮小尺寸`,
     );
   }
 
@@ -126,7 +144,7 @@ export function writeBambu3mf(input: Buffer, s: BambuSettings): Buffer {
     zipSync({
       ...files,
       [modelPath]: strToU8(model),
-      "Metadata/project_settings.config": strToU8(JSON.stringify(buildProjectConfig(s), null, 4)),
+      "Metadata/project_settings.config": strToU8(JSON.stringify(buildProjectConfig(profiles, s), null, 4)),
     }),
   );
 }
