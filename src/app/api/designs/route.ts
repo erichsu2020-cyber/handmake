@@ -4,11 +4,10 @@ import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { buildDesignPrompt, parseDesignInput } from "@/lib/design-settings";
 import { toDesignView } from "@/lib/designs";
+import { fetchUploadedImage } from "@/lib/uploaded-image";
 import { DesignImage } from "@/models/DesignImage";
 
 const MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 // 設計 3D 圖：依表單組出提示詞 → OpenAI 產生 1–4 張 → 存到 Vercel Blob 的 handmake/designs/
 export async function POST(request: Request) {
@@ -40,28 +39,17 @@ export async function POST(request: Request) {
   const design = parseDesignInput(raw);
   if (typeof design === "string") return Response.json({ error: design }, { status: 400 });
 
-  const reference = formData.get("reference");
-  const file = reference instanceof File && reference.size > 0 ? reference : null;
-  if (file && !ALLOWED_TYPES.includes(file.type)) {
-    return Response.json({ error: "參考圖只支援 PNG、JPEG、WebP" }, { status: 400 });
-  }
-  if (file && file.size > MAX_IMAGE_BYTES) {
-    return Response.json({ error: "參考圖不能超過 20MB" }, { status: 400 });
-  }
-
-  let referenceImageUrl: string | undefined;
-  if (file) {
+  // 參考圖由瀏覽器直接上傳到 Vercel Blob（見 /api/blob-upload），這裡只收網址
+  const referenceImageUrl = String(formData.get("referenceUrl") ?? "").trim() || undefined;
+  let file: File | null = null;
+  if (referenceImageUrl) {
     try {
-      const ext = file.type.split("/")[1];
-      const blob = await put(`handmake/designs/references/reference.${ext}`, file, {
-        access: "public",
-        contentType: file.type,
-        addRandomSuffix: true,
-      });
-      referenceImageUrl = blob.url;
+      const fetched = await fetchUploadedImage(referenceImageUrl, "handmake/designs/references/");
+      if (typeof fetched === "string") return Response.json({ error: `參考圖：${fetched}` }, { status: 400 });
+      file = fetched;
     } catch (error) {
-      console.error("上傳參考圖失敗", error);
-      return Response.json({ error: "上傳參考圖失敗" }, { status: 500 });
+      console.error("讀取上傳的參考圖失敗", error);
+      return Response.json({ error: "讀取上傳的參考圖失敗" }, { status: 500 });
     }
   }
 

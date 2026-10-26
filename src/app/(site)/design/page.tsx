@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import {
   DEFAULT_DESIGN,
   DESIGN_BACKGROUNDS,
@@ -53,11 +54,26 @@ export default function DesignPage() {
     setError(null);
     setResult(null);
 
-    const formData = new FormData();
-    formData.append("design", JSON.stringify(design));
-    if (reference) formData.append("reference", reference);
-
     try {
+      // 參考圖直接從瀏覽器上傳到 Vercel Blob，不經過伺服器（Vercel 函式的請求上限只有 4.5MB）
+      let referenceUrl: string | null = null;
+      if (reference) {
+        try {
+          const blob = await upload(
+            `handmake/designs/references/reference.${reference.type.split("/")[1]}`,
+            reference,
+            { access: "public", handleUploadUrl: "/api/blob-upload", contentType: reference.type },
+          );
+          referenceUrl = blob.url;
+        } catch (err) {
+          throw new Error(err instanceof Error ? `上傳參考圖失敗：${err.message}` : "上傳參考圖失敗");
+        }
+      }
+
+      const formData = new FormData();
+      formData.append("design", JSON.stringify(design));
+      if (referenceUrl) formData.append("referenceUrl", referenceUrl);
+
       const res = await fetch("/api/designs", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "產生失敗");
