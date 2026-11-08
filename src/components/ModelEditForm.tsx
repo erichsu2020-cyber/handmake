@@ -14,10 +14,13 @@ import {
   MODEL_EDIT_SNAPSHOT_FOLDER,
   MODEL_EDIT_UPLOAD_FOLDER,
   STEM_FIELDS,
+  STEM_MODES,
   parseEditRequest,
+  splitLayout,
   stemClearanceHeight,
   type EditRequest,
   type ResizeMode,
+  type StemMode,
   type StemSpec,
 } from "@/lib/model-edit-settings";
 
@@ -29,6 +32,10 @@ const RESIZE_OPTIONS: { value: ResizeMode; label: string }[] = [
   { value: "ai", label: "交給 AI（依需求說明）" },
 ];
 const AXES = ["寬（X）", "深（Y）", "高（Z）"];
+const STEM_MODE_OPTIONS = [
+  ...Object.entries(STEM_MODES).map(([value, label]) => ({ value, label })),
+  { value: "auto", label: "交給 AI 選" },
+];
 
 type Picked = { file: File; sizeMm: [number, number, number]; info: string; snapshots: Snapshot[] };
 
@@ -44,6 +51,7 @@ export default function ModelEditForm() {
   const [keepRatio, setKeepRatio] = useState(true);
   const [stemOn, setStemOn] = useState(true);
   const [stem, setStem] = useState<StemSpec>(DEFAULT_STEM);
+  const [stemMode, setStemMode] = useState<StemMode | "auto">("split");
   const [notes, setNotes] = useState("");
   const [phase, setPhase] = useState<"idle" | "uploading" | "working">("idle");
   const elapsed = useElapsedSeconds(phase === "working");
@@ -93,6 +101,7 @@ export default function ModelEditForm() {
     const request: EditRequest = {
       resize: { mode: resizeMode, sizeMm: resizeMode === "exact" ? size : undefined },
       stem: stemOn ? stem : null,
+      stemMode,
       notes,
     };
     const parsed = parseEditRequest(request);
@@ -187,8 +196,13 @@ export default function ModelEditForm() {
         <Check checked={stemOn} onChange={setStemOn} label="在模型底部做十字孔，插在鍵盤軸上按壓回彈" />
         {stemOn && (
           <>
+            <Field label="做法">
+              <Chips options={STEM_MODE_OPTIONS} value={stemMode} onChange={(v) => setStemMode(v as StemMode | "auto")} />
+            </Field>
+            <StemModeHint mode={stemMode} stem={stem} />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {STEM_FIELDS.map((f) => (
+              {/* 底座方孔只有切開做法用得到 */}
+              {STEM_FIELDS.filter((f) => f.key !== "plateHole" || stemMode === "split" || stemMode === "auto").map((f) => (
                 <Field key={f.key} label={`${f.label} mm`} hint={f.hint}>
                   <input
                     type="number"
@@ -204,7 +218,7 @@ export default function ModelEditForm() {
             </div>
             <p className="text-sm text-zinc-500">
               孔的大小 = 十字 + 2 × 間隙：{(stem.crossLength + 2 * stem.clearance).toFixed(2)} × {(stem.crossWidth + 2 * stem.clearance).toFixed(2)} mm，深{" "}
-              {stem.depth} mm。柱座下方會留 {stemClearanceHeight(stem).toFixed(1)} mm，按到底也不會撞到軸體。
+              {stem.depth} mm。
               <button type="button" onClick={() => setStem(DEFAULT_STEM)} className="ml-2 underline">
                 恢復 MX 預設值
               </button>
@@ -240,4 +254,15 @@ export default function ModelEditForm() {
       <p className="text-center text-xs text-zinc-500">每次修改會使用 OpenAI 點數。第一次用新的間隙，建議先印一個小的測試鬆緊。</p>
     </form>
   );
+}
+
+function StemModeHint({ mode, stem }: { mode: StemMode | "auto"; stem: StemSpec }) {
+  const split = splitLayout(stem);
+  const text = {
+    split: `模型底部往上切一刀：上半部（本體）底部內嵌十字孔，下半部（底座）挖空裝鍵盤軸，軸從底座上方壓進 ${stem.plateHole} mm 方孔卡住。底座至少 ${split.minBase.toFixed(1)} mm 高，組裝後本體和底座之間有 ${split.gap.toFixed(1)} mm 間隙讓你按。模型底部要有約 20 mm 見方的實心區域。`,
+    protrude: `柱座從模型底部往下凸出 ${stemClearanceHeight(stem).toFixed(1)} mm，任何形狀都能做，但看得到柱子。`,
+    pocket: `底部挖凹槽讓軸體退進去（像鍵帽），底面要平、約 20 mm 見方。`,
+    auto: "AI 看模型的形狀和大小選做法。",
+  }[mode];
+  return <p className="text-sm text-zinc-500">{text}</p>;
 }

@@ -80,7 +80,9 @@ export default function ModelEditResult({ edit }: { edit: EditResult }) {
             <>
               <dt className="text-zinc-500">十字孔</dt>
               <dd>
-                {STEM_MODES[stem.mode]}・孔 {stem.holeMm.map((v) => v.toFixed(2)).join(" × ")} mm・柱座長 {stem.bossLengthMm.toFixed(1)} mm・位置偏移{" "}
+                {STEM_MODES[stem.mode]}
+                {stem.cutHeightMm !== undefined && `・從底部 ${stem.cutHeightMm.toFixed(1)} mm 切開・本體和底座間隙 ${stem.gapMm?.toFixed(1)} mm`}
+                ・孔 {stem.holeMm.map((v) => v.toFixed(2)).join(" × ")} mm・柱座長 {stem.bossLengthMm.toFixed(1)} mm・位置偏移{" "}
                 {stem.centerMm.map((v) => v.toFixed(1)).join(", ")} mm
                 <span className="text-zinc-500">（{plan.stem.reason}）</span>
               </dd>
@@ -103,7 +105,17 @@ export default function ModelEditResult({ edit }: { edit: EditResult }) {
             {request.resize.sizeMm && `：${mm(request.resize.sizeMm)} mm`}
           </dd>
           <dt className="text-zinc-500">十字孔</dt>
-          <dd>{request.stem ? STEM_FIELDS.map((f) => `${f.label} ${request.stem![f.key]}`).join("・") : "不加"}</dd>
+          <dd>
+            {request.stem
+              ? [
+                  // 早期紀錄沒有做法和底座方孔
+                  request.stemMode && (request.stemMode === "auto" ? "做法交給 AI" : STEM_MODES[request.stemMode]),
+                  ...STEM_FIELDS.filter((f) => request.stem![f.key] !== undefined).map((f) => `${f.label} ${request.stem![f.key]}`),
+                ]
+                  .filter(Boolean)
+                  .join("・")
+              : "不加"}
+          </dd>
           <dt className="text-zinc-500">需求說明</dt>
           <dd className="whitespace-pre-wrap">{request.notes || "（沒有）"}</dd>
           <dt className="text-zinc-500">AI 模型</dt>

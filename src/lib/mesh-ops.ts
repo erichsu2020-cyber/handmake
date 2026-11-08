@@ -94,7 +94,7 @@ function flipUpsideDown(solid: Manifold): Manifold {
   return flipped.translate([0, 0, -flipped.boundingBox().min[2]]);
 }
 
-function arrangeSideBySide(pieces: Manifold[]): Manifold[] {
+export function arrangeSideBySide(pieces: Manifold[]): Manifold[] {
   const widths = pieces.map((p) => p.boundingBox().max[0] - p.boundingBox().min[0]);
   const total = widths.reduce((a, b) => a + b, 0) + GAP_MM * (pieces.length - 1);
   let x = -total / 2;

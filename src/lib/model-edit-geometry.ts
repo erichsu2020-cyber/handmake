@@ -1,7 +1,17 @@
 import type { MeshData } from "@/lib/mesh";
 import { boundsSize, meshBounds, scaleMeshes } from "@/lib/mesh";
-import { fromManifold, loadWasm, toManifold } from "@/lib/mesh-ops";
-import { POCKET_MM, POCKET_WALL_MM, STEM_MODES, stemClearanceHeight, type StemMode, type StemSpec } from "@/lib/model-edit-settings";
+import { arrangeSideBySide, fromManifold, loadWasm, toManifold, type Manifold, type Wasm } from "@/lib/mesh-ops";
+import {
+  MX_PLATE,
+  POCKET_MM,
+  POCKET_WALL_MM,
+  STEM_MODES,
+  splitLayout,
+  stemClearanceHeight,
+  type StemMode,
+  type EditResult,
+  type StemSpec,
+} from "@/lib/model-edit-settings";
 
 // 「AI 改模型」的幾何運算：AI 只決定參數，實際縮放和挖十字孔都在這裡精準計算
 // 座標：Z 軸朝上、單位 mm；縮放後模型底部中心在原點
@@ -10,13 +20,17 @@ const SEGMENTS = 48;
 
 export type GeometryInput = {
   targetSizeMm?: [number, number, number];
-  stem?: { spec: StemSpec; mode: StemMode; offsetMm: [number, number] };
+  // cutHeightMm：切開做法建議的切割高度，太低或切不出底座時程式會往上找
+  stem?: { spec: StemSpec; mode: StemMode; offsetMm: [number, number]; cutHeightMm?: number };
 };
 
 export type GeometryOutput = {
   meshes: MeshData[];
+  // 切開做法有兩個部件，寫進 3MF 的物件名稱
+  partNames?: string[];
+  // 組裝後的尺寸
   sizeMm: [number, number, number];
-  stem?: { mode: StemMode; centerMm: [number, number]; bossLengthMm: number; holeMm: [number, number, number] };
+  stem?: NonNullable<EditResult["stem"]>;
   notes: string[];
 };
 
@@ -43,6 +57,9 @@ export async function applyModelEdit(source: MeshData[], input: GeometryInput): 
     notes.push("AI 指定的十字孔位置太靠邊，已移到模型範圍內");
   }
 
+  const hole: [number, number, number] = [spec.crossLength + 2 * spec.clearance, spec.crossWidth + 2 * spec.clearance, spec.depth];
+  if (input.stem.mode === "split") return splitWithStem(wasm, solid, spec, center, hole, input.stem.cutHeightMm, notes);
+
   let mode = input.stem.mode;
   const clearance = stemClearanceHeight(spec);
   if (mode === "pocket") {
@@ -57,7 +74,6 @@ export async function applyModelEdit(source: MeshData[], input: GeometryInput): 
   const bottom = bottomUnder(meshes, center, radius * 0.9);
   if (bottom === null) throw new Error("十字孔位置的正上方沒有模型，請換個位置或在需求說明裡指定");
 
-  const hole: [number, number, number] = [spec.crossLength + 2 * spec.clearance, spec.crossWidth + 2 * spec.clearance, spec.depth];
   let holeBottom: number;
   let bossLength: number;
   if (mode === "protrude") {
@@ -73,9 +89,7 @@ export async function applyModelEdit(source: MeshData[], input: GeometryInput): 
     holeBottom = 0;
   }
 
-  const arm = (x: number, y: number) =>
-    wasm.Manifold.cube([x, y, spec.depth + 0.01]).translate([center[0] - x / 2, center[1] - y / 2, holeBottom - 0.01]);
-  solid = solid.subtract(arm(hole[0], hole[1])).subtract(arm(hole[1], hole[0]));
+  solid = solid.subtract(crossHole(wasm, hole, center, holeBottom));
 
   if (solid.decompose().length > parts) {
     throw new Error("十字孔的柱座沒有連到模型（可能是模型底部太薄或是空心的），請換個位置再試");
@@ -91,6 +105,131 @@ export async function applyModelEdit(source: MeshData[], input: GeometryInput): 
     stem: { mode, centerMm: center, bossLengthMm: bossLength, holeMm: hole },
     notes,
   };
+}
+
+// 十字孔：兩個長方體交叉，從 bottom 往上挖 hole[2] 深
+function crossHole(wasm: Wasm, hole: [number, number, number], [cx, cy]: [number, number], bottom: number): Manifold {
+  const arm = (x: number, y: number) => wasm.Manifold.cube([x, y, hole[2] + 0.01]).translate([cx - x / 2, cy - y / 2, bottom - 0.01]);
+  return arm(hole[0], hole[1]).add(arm(hole[1], hole[0]));
+}
+
+// 置中在 (cx, cy) 的方塊，從 z 往上 height
+const centeredBox = (wasm: Wasm, size: number, [cx, cy]: [number, number], z: number, height: number) =>
+  wasm.Manifold.cube([size, size, height]).translate([cx - size / 2, cy - size / 2, z]);
+
+// 切開做法：模型在 cut 高度切一刀
+// - 本體（上半部）：底部挖凹槽讓按到底的軸體上蓋伸進來，凹槽中間的柱座跟底面齊平，柱座裡是十字孔
+// - 底座（下半部）：上方凹槽讓軸體上蓋陷進去，接著是 1.5 mm 厚、開方孔的卡板（軸的卡扣扣在這裡），
+//   下方挖空放軸的下蓋和針腳，一路通到底面（接線用）
+// 高度怎麼算見 splitLayout；兩個部件並排放在平台上，各自正著印
+function splitWithStem(
+  wasm: Wasm,
+  solid: Manifold,
+  spec: StemSpec,
+  wanted: [number, number],
+  hole: [number, number, number],
+  cutAsked: number | undefined,
+  notes: string[],
+): GeometryOutput {
+  const layout = splitLayout(spec);
+  const box = solid.boundingBox();
+  const height = box.max[2] - box.min[2];
+
+  const found = findCut(wasm, solid, layout, wanted, cutAsked);
+  if (!found) {
+    // 切不出來：試著放大，告訴使用者大概要多大
+    let advice = "請把模型放大或改用其他做法";
+    for (let scale = 1.1; scale <= 3; scale += 0.1) {
+      if (findCut(wasm, solid.scale(scale), layout, [wanted[0] * scale, wanted[1] * scale], undefined)) {
+        advice = `把模型等比放大到約 ${Math.ceil(height * scale)} mm 高（現在 ${Math.round(height)} mm）就能切開，或改用其他做法`;
+        break;
+      }
+    }
+    const square = Math.ceil(POCKET_MM + POCKET_WALL_MM * 2);
+    throw new Error(`模型底部不夠大：切開做法需要從底部往上一段都有 ${square} mm 見方的實心區域。${advice}`);
+  }
+  const { cut, center } = found;
+  if (center[0] !== wanted[0] || center[1] !== wanted[1]) {
+    notes.push(`原本的十字孔位置切不出底座，往旁邊移到 ${center.map((v) => v.toFixed(1)).join(", ")} mm`);
+  }
+  if (cutAsked !== undefined && Math.abs(cut - cutAsked) > 0.01) {
+    notes.push(
+      cutAsked < layout.minBase
+        ? `底座至少要 ${layout.minBase.toFixed(1)} mm 高才裝得下軸，切割高度從 ${cutAsked.toFixed(1)} 改成 ${cut.toFixed(1)} mm`
+        : `${cutAsked.toFixed(1)} mm 高的切面不夠大，切割高度改成 ${cut.toFixed(1)} mm`,
+    );
+  }
+
+  const [top, bottom] = solid.splitByPlane([0, 0, 1], cut);
+  let body = top.translate([0, 0, -cut]);
+  const parts = body.decompose().length;
+  const radius = spec.bossDiameter / 2;
+  body = body
+    .subtract(centeredBox(wasm, POCKET_MM, center, -0.01, layout.pocket + 0.01))
+    .add(wasm.Manifold.cylinder(layout.pocket + 1, radius, radius, SEGMENTS).translate([center[0], center[1], 0]))
+    .subtract(crossHole(wasm, hole, center, 0));
+  if (body.decompose().length > parts) throw new Error("十字孔的柱座沒有連到本體，請換個位置再試");
+
+  const plateBottom = cut - layout.recess - MX_PLATE;
+  let base = bottom
+    .subtract(centeredBox(wasm, spec.plateHole, center, -0.01, cut + 0.02))
+    .subtract(centeredBox(wasm, POCKET_MM, center, -0.01, plateBottom + 0.01));
+  if (layout.recess > 0) base = base.subtract(centeredBox(wasm, POCKET_MM, center, cut - layout.recess, layout.recess + 0.01));
+
+  const meshes = arrangeSideBySide([base, body]).map(fromManifold);
+  return {
+    meshes,
+    partNames: ["底座（裝鍵盤軸）", "本體（內嵌十字孔）"],
+    sizeMm: [box.max[0] - box.min[0], box.max[1] - box.min[1], height + layout.gap],
+    stem: { mode: "split", centerMm: center, bossLengthMm: layout.pocket, holeMm: hole, cutHeightMm: cut, gapMm: layout.gap },
+    notes,
+  };
+}
+
+// 找切割高度和十字孔位置：底座的範圍（底部 1 mm 以上到切口）和本體的凹槽到凹槽頂上方，
+// 每一層截面都要整片蓋住「凹槽加一圈牆」的方形。位置先用 wanted，不行再往旁邊最多 4 mm 找
+// 每個高度只切一次截面（最花時間的部分），再跟各個候選位置的方形比對
+function findCut(
+  wasm: Wasm,
+  solid: Manifold,
+  layout: ReturnType<typeof splitLayout>,
+  wanted: [number, number],
+  cutAsked: number | undefined,
+): { cut: number; center: [number, number] } | null {
+  const STEP = 0.5;
+  const height = solid.boundingBox().max[2];
+  const above = layout.pocket + 1.5;
+  const levels = Math.floor((height * 0.7 + above) / STEP);
+  if (levels * STEP < layout.minBase + above) return null;
+
+  const centers: [number, number][] = [];
+  for (const dx of [0, -2, 2, -4, 4]) for (const dy of [0, -2, 2, -4, 4]) centers.push([wanted[0] + dx, wanted[1] + dy]);
+  centers.sort((p, q) => Math.hypot(p[0] - wanted[0], p[1] - wanted[1]) - Math.hypot(q[0] - wanted[0], q[1] - wanted[1]));
+
+  const half = POCKET_MM / 2 + POCKET_WALL_MM;
+  const squares = centers.map(([cx, cy]) => wasm.CrossSection.square([half * 2, half * 2]).translate([cx - half, cy - half]));
+  const full = half * half * 4 * 0.99;
+  // covered[i][k]：第 k 層（高度 (k + 1) × STEP）蓋住第 i 個位置的方形
+  const covered = centers.map(() => new Array<boolean>(levels).fill(false));
+  for (let k = 0; k < levels; k++) {
+    const section = solid.slice((k + 1) * STEP);
+    squares.forEach((sq, i) => (covered[i][k] = section.intersect(sq).area() >= full));
+  }
+
+  const start = Math.max(layout.minBase, cutAsked ?? 0);
+  for (let i = 0; i < centers.length; i++) {
+    for (let cut = Math.ceil(start / STEP) * STEP; cut <= height * 0.7; cut += STEP) {
+      const top = cut + above;
+      let ok = top <= height;
+      // 底面最下面 1 mm 常是圓角，不檢查；切口那一層本身不檢查
+      for (let z = 1; ok && z <= top + 1e-6; z += STEP) {
+        if (Math.abs(z - cut) < 1e-6) continue;
+        ok = covered[i][Math.round(z / STEP) - 1] ?? false;
+      }
+      if (ok) return { cut, center: centers[i] };
+    }
+  }
+  return null;
 }
 
 // 從正下方往上看，(x, y) 這條垂直線最先碰到模型的高度；沒碰到回傳 null

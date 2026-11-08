@@ -108,12 +108,13 @@ function parseObj(input: Buffer): MeshData {
 
 // ---------- 寫檔 ----------
 
-export function writeModel(format: ModelFormat, meshes: MeshData[]): Buffer {
+// names：3MF 的物件名稱（Bambu Studio 的物件清單看得到），沒給就是 part_1、part_2…
+export function writeModel(format: ModelFormat, meshes: MeshData[], names?: string[]): Buffer {
   switch (format) {
     case "STL":
       return writeStl(meshes);
     case "3MF":
-      return write3mf(meshes);
+      return write3mf(meshes, names);
     case "OBJ":
       return writeObj(meshes);
   }
@@ -140,7 +141,9 @@ function writeStl(meshes: MeshData[]) {
   return buffer;
 }
 
-function write3mf(meshes: MeshData[]) {
+const escapeXml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+function write3mf(meshes: MeshData[], names?: string[]) {
   const num = (v: number) => Number(v.toFixed(4)).toString();
   const objects = meshes.map(({ positions: p, indices }, i) => {
     const vertices: string[] = [];
@@ -151,7 +154,7 @@ function write3mf(meshes: MeshData[]) {
     for (let t = 0; t < indices.length; t += 3) {
       triangles.push(`<triangle v1="${indices[t]}" v2="${indices[t + 1]}" v3="${indices[t + 2]}"/>`);
     }
-    return `<object id="${i + 1}" name="part_${i + 1}" type="model"><mesh><vertices>${vertices.join("")}</vertices><triangles>${triangles.join("")}</triangles></mesh></object>`;
+    return `<object id="${i + 1}" name="${escapeXml(names?.[i] ?? `part_${i + 1}`)}" type="model"><mesh><vertices>${vertices.join("")}</vertices><triangles>${triangles.join("")}</triangles></mesh></object>`;
   });
   const items = meshes.map((_, i) => `<item objectid="${i + 1}"/>`).join("");
 

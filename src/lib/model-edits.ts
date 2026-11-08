@@ -101,7 +101,15 @@ export async function runModelEdit(
   try {
     edited = await applyModelEdit(project.meshes, {
       targetSizeMm: changed ? target : undefined,
-      stem: request.stem ? { spec: request.stem, mode: plan.stem.mode, offsetMm: [plan.stem.offsetXMm, plan.stem.offsetYMm] } : undefined,
+      stem: request.stem
+        ? {
+            spec: request.stem,
+            // 使用者指定的做法優先，AI 只決定位置和切割高度
+            mode: request.stemMode && request.stemMode !== "auto" ? request.stemMode : plan.stem.mode,
+            offsetMm: [plan.stem.offsetXMm, plan.stem.offsetYMm],
+            cutHeightMm: plan.stem.cutHeightMm || undefined,
+          }
+        : undefined,
     });
   } catch (error) {
     if (error instanceof NotManifoldError) {
@@ -113,11 +121,12 @@ export async function runModelEdit(
   notes.push(...edited.notes);
 
   const bed = bedSize(project.config);
-  if (bed && edited.sizeMm.some((v, k) => v > bed[k])) {
-    notes.push(`修改後 ${edited.sizeMm.map((v) => v.toFixed(0)).join("×")} mm 超過印表機平台 ${bed.join("×")} mm`);
+  // 切開做法的兩個部件並排擺在平台上，要用擺好的範圍判斷
+  if (bed && boundsSize(meshBounds(edited.meshes)).some((v, k) => v > bed[k])) {
+    notes.push(`修改後的模型放不進印表機平台 ${bed.join("×")} mm`);
   }
 
-  const buffer = write3mf(edited.meshes, project.config, bed);
+  const buffer = write3mf(edited.meshes, edited.partNames, project.config, bed);
   const fileName = `${name.replace(/\.3mf$/i, "").slice(0, 80) || "model"}-edited.3mf`;
   const blob = await put(`${MODEL_EDIT_OUTPUT_FOLDER}${fileName}`, buffer, {
     access: "public",
@@ -145,8 +154,13 @@ export async function runModelEdit(
 }
 
 // 原本是 Bambu Studio 專案的話，保留它的列印設定（作法同 bambu-3mf.ts）並把模型放到平台中央
-function write3mf(meshes: MeshData[], config: BambuProject["config"], bed: [number, number, number] | undefined): Buffer {
-  const plain = writeModel("3MF", meshes);
+function write3mf(
+  meshes: MeshData[],
+  names: string[] | undefined,
+  config: BambuProject["config"],
+  bed: [number, number, number] | undefined,
+): Buffer {
+  const plain = writeModel("3MF", meshes, names);
   if (!config) return plain;
 
   const files = unzipSync(new Uint8Array(plain));

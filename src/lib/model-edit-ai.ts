@@ -7,6 +7,7 @@ import {
   POCKET_WALL_MM,
   STEM_FIELDS,
   STEM_MODES,
+  splitLayout,
   stemClearanceHeight,
   type AiPlan,
   type EditRequest,
@@ -28,14 +29,17 @@ const INSTRUCTIONS = `你是 3D 列印產品設計師，專門把小模型改造
 十字孔（stem）：
 - 柱座和十字孔一律做在模型「目前的底部」（Z 最低、貼平台那面），讓模型站在軸上；看截圖判斷底部是不是模型的正確下方，如果看起來不是（例如模型是躺著的），要在 warnings 提醒使用者先在 Bambu Studio 轉正再來。
 - offsetXMm、offsetYMm 是十字孔中心相對於「模型底面中心」的位移，通常放 0, 0；模型重心明顯偏一邊時（例如有尾巴、舉手），往重心方向移，讓按壓時不會歪。
-- mode 兩種：
+- mode 三種：
+  - split（${STEM_MODES.split}）：在模型底部往上 cutHeightMm 的地方切一刀。上半部（本體）底部內嵌十字孔，十字孔藏在模型裡；下半部（底座）挖空把鍵盤軸裝進去，按本體就會壓到軸。外觀最完整，但切割高度的截面和以下的部分都要有至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方的實心區域。切口最好選在模型本來就有分界的地方（例如底座和身體的交界、衣服下襬），切出來比較自然。
   - pocket（${STEM_MODES.pocket}）：底部挖一個 ${POCKET_MM} mm 見方的凹槽讓軸體上蓋退進去，柱座藏在凹槽裡，外觀最乾淨。需要底面平、而且整片至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方都是實心的底面。
   - protrude（${STEM_MODES.protrude}）：柱座從模型底部往下凸出，模型像站在一根短柱上。任何形狀都能用（腳、圓底、小底面），但按壓時模型底部和軸體上蓋之間會看到柱子。
   - 不確定底面夠不夠大、平不平時選 protrude；程式發現 pocket 做不到時也會自動改用 protrude。
+  - 使用者已經指定做法時，mode 照抄，只決定位置（和切割高度）。
+- cutHeightMm：只有 split 用，單位 mm、從修改後模型的底部算起；其他做法填 0。程式會檢查，太低或切面不夠大時會往上找。
 - 十字孔尺寸由使用者決定，你不能改；如果覺得尺寸或間隙不合理（例如比 MX 規格小很多會插不進去），寫在 warnings。
 
 warnings：修改後可能的問題（按壓會歪、太重、太細的部位、柱座附近太薄、方向不對…）。沒有就給空陣列。
-printAdvice：列印建議，例如擺放方向、要不要支撐、層高、牆數、先印一個試裝片測試間隙。柱座凸出時模型懸在柱子上，要提醒需要支撐或考慮倒過來印。
+printAdvice：列印建議，例如擺放方向、要不要支撐、層高、牆數、先印一個試裝片測試間隙。柱座凸出時模型懸在柱子上，要提醒需要支撐或考慮倒過來印；切開做法兩個部件都正著印，本體底部的凹槽頂是橋接，並說明怎麼組裝（軸先從底座上方壓進方孔卡住，再把本體套上十字軸）。
 全部用繁體中文，口吻讓新手看得懂，summary 用 2–3 句話說明你的計畫。`;
 
 function planSchema() {
@@ -56,11 +60,12 @@ function planSchema() {
       stem: {
         type: "object",
         additionalProperties: false,
-        required: ["mode", "offsetXMm", "offsetYMm", "reason"],
+        required: ["mode", "offsetXMm", "offsetYMm", "cutHeightMm", "reason"],
         properties: {
           mode: { type: "string", enum: Object.keys(STEM_MODES) },
           offsetXMm: { type: "number" },
           offsetYMm: { type: "number" },
+          cutHeightMm: { type: "number" },
           reason: text,
         },
       },
@@ -81,6 +86,7 @@ export type PlanInput = {
 function buildPlanText({ request, geometry, fixedSizeMm, images }: PlanInput) {
   const mm = (v: number[]) => v.map((x) => x.toFixed(1)).join(" × ");
   const s = request.stem;
+  const split = s && splitLayout(s);
   return [
     "## 模型目前的數據（已套用 3MF 裡的擺放方向）",
     "```json",
@@ -98,9 +104,13 @@ function buildPlanText({ request, geometry, fixedSizeMm, images }: PlanInput) {
       ? [
           "- 要加十字孔（使用者輸入的尺寸，單位 mm）：",
           ...STEM_FIELDS.map((f) => `  - ${f.label}：${s[f.key]}`),
-          `- 程式算出柱座下方要留 ${stemClearanceHeight(s).toFixed(1)} mm 的退讓空間（按到底時不撞到軸體）`,
+          request.stemMode && request.stemMode !== "auto"
+            ? `- 做法：使用者指定 ${request.stemMode}（${STEM_MODES[request.stemMode]}），mode 請照抄`
+            : "- 做法：交給你選",
+          `- protrude／pocket：柱座下方要留 ${stemClearanceHeight(s).toFixed(1)} mm 的退讓空間（按到底時不撞到軸體）`,
+          `- split：底座最少 ${split!.minBase.toFixed(1)} mm 高（裝得下軸的下蓋和針腳），組裝後本體和底座之間有 ${split!.gap.toFixed(1)} mm 間隙（按壓行程），總高度會多這麼多`,
         ].join("\n")
-      : "- 不加十字孔（stem 欄位隨意填 protrude、0、0，reason 寫「不需要」）",
+      : "- 不加十字孔（stem 欄位隨意填 protrude、0、0、0，reason 寫「不需要」）",
     "",
     "## 需求說明",
     request.notes || "（沒有）",
