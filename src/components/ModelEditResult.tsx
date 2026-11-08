@@ -3,9 +3,10 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { downloadUrl } from "@/lib/blob-url";
+import { uploadToBlob } from "@/lib/analysis-client";
 import { readBambuProject } from "@/lib/bambu-project-read";
 import { BOTTOM_VIEW, SNAPSHOT_VIEWS, renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
-import { STEM_FIELDS, STEM_MODES, type EditResult } from "@/lib/model-edit-settings";
+import { MODEL_EDIT_SNAPSHOT_FOLDER, STEM_FIELDS, STEM_MODES, type EditResult } from "@/lib/model-edit-settings";
 
 const ModelPreview = dynamic(() => import("@/components/ModelPreview"), { ssr: false });
 
@@ -13,6 +14,8 @@ const ModelPreview = dynamic(() => import("@/components/ModelPreview"), { ssr: f
 
 const mm = (v: number[]) => v.map((x) => x.toFixed(1)).join(" × ");
 const RESIZE_LABELS = { keep: "不改", exact: "指定", ai: "交給 AI" } as const;
+// 改好的模型拍這 5 個角度（多一張從正下方看，才看得到十字孔）
+const RESULT_VIEWS = [...SNAPSHOT_VIEWS, BOTTOM_VIEW];
 
 export function SnapshotGrid({ snapshots }: { snapshots: { id: string; label: string; url: string }[] }) {
   return (
@@ -30,23 +33,34 @@ export function SnapshotGrid({ snapshots }: { snapshots: { id: string; label: st
 
 export default function ModelEditResult({ edit }: { edit: EditResult }) {
   const { plan, stem, request } = edit;
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const saved = edit.resultSnapshotUrls.map((url, i) => ({ id: RESULT_VIEWS[i]?.id ?? String(i), label: RESULT_VIEWS[i]?.label ?? "", url }));
+  const [rendered, setRendered] = useState<Snapshot[]>([]);
+  const snapshots = saved.length > 0 ? saved : rendered;
 
-  // 改好的模型在瀏覽器拍成截圖（多一張從正下方看，才看得到十字孔）
+  // 還沒存過截圖（剛修改完第一次打開）：在瀏覽器拍好、上傳存起來，之後打開就直接顯示，不用再下載模型重拍
   useEffect(() => {
+    if (edit.resultSnapshotUrls.length > 0) return;
     let cancelled = false;
     let shots: Snapshot[] = [];
     (async () => {
       const bytes = new Uint8Array(await (await fetch(edit.fileUrl)).arrayBuffer());
-      shots = await renderSnapshots(readBambuProject(bytes).meshes, [...SNAPSHOT_VIEWS, BOTTOM_VIEW]);
-      if (cancelled) shots.forEach((s) => URL.revokeObjectURL(s.url));
-      else setSnapshots(shots);
+      shots = await renderSnapshots(readBambuProject(bytes).meshes, RESULT_VIEWS);
+      if (cancelled) return shots.forEach((s) => URL.revokeObjectURL(s.url));
+      setRendered(shots);
+      const urls = await Promise.all(
+        shots.map((s) => uploadToBlob(`${MODEL_EDIT_SNAPSHOT_FOLDER}result-${s.id}.jpg`, s.blob, "image/jpeg")),
+      );
+      await fetch(`/api/model-edits/${edit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resultSnapshotUrls: urls }),
+      });
     })().catch((err) => console.error("改好的模型截圖失敗", err));
     return () => {
       cancelled = true;
       shots.forEach((s) => URL.revokeObjectURL(s.url));
     };
-  }, [edit.fileUrl]);
+  }, [edit.id, edit.fileUrl, edit.resultSnapshotUrls.length]);
 
   const list = (title: string, items: string[]) =>
     items.length > 0 && (

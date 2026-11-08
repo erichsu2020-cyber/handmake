@@ -26,7 +26,7 @@ type BambuUploadUrls = { modelFileUrl?: string; bambu?: { fileUrl?: string } };
 type DrawingUrls = { previewUrl?: string; layers?: { url: string }[] };
 type PrintCheckUrls = { sourceFileUrl?: string; snapshotUrls?: string[]; fixedFileUrl?: string };
 type PrintReviewUrls = PrintCheckUrls & { photoUrls?: string[] };
-type ModelEditUrls = { sourceFileUrl?: string; snapshotUrls?: string[]; fileUrl?: string };
+type ModelEditUrls = { sourceFileUrl?: string; snapshotUrls?: string[]; resultSnapshotUrls?: string[]; fileUrl?: string };
 
 const pathOf = (url: string) => decodeURIComponent(new URL(url).pathname.slice(1));
 
@@ -49,7 +49,7 @@ async function referencedPaths() {
     Drawing.find({}, { previewUrl: 1, "layers.url": 1 }).lean<DrawingUrls[]>(),
     PrintCheck.find({}, { sourceFileUrl: 1, snapshotUrls: 1, fixedFileUrl: 1 }).lean<PrintCheckUrls[]>(),
     PrintReview.find({}, { sourceFileUrl: 1, photoUrls: 1, snapshotUrls: 1, fixedFileUrl: 1 }).lean<PrintReviewUrls[]>(),
-    ModelEdit.find({}, { sourceFileUrl: 1, snapshotUrls: 1, fileUrl: 1 }).lean<ModelEditUrls[]>(),
+    ModelEdit.find({}, { sourceFileUrl: 1, snapshotUrls: 1, resultSnapshotUrls: 1, fileUrl: 1 }).lean<ModelEditUrls[]>(),
   ]);
 
   const urls: (string | null | undefined)[] = [];
@@ -73,7 +73,7 @@ async function referencedPaths() {
     urls.push(r.sourceFileUrl, ...(r.photoUrls ?? []), ...(r.snapshotUrls ?? []), r.fixedFileUrl);
   }
   for (const e of edits) {
-    urls.push(e.sourceFileUrl, ...(e.snapshotUrls ?? []), e.fileUrl);
+    urls.push(e.sourceFileUrl, ...(e.snapshotUrls ?? []), ...(e.resultSnapshotUrls ?? []), e.fileUrl);
   }
   return new Set(urls.filter((url): url is string => Boolean(url)).map(pathOf));
 }

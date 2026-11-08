@@ -26,6 +26,7 @@ export function toModelEditView(doc: any): EditResult {
     id: doc._id.toString(),
     sourceName: doc.sourceName,
     snapshotUrls: doc.snapshotUrls ?? [],
+    resultSnapshotUrls: doc.resultSnapshotUrls ?? [],
     request: doc.request,
     plan: doc.plan,
     beforeMm: doc.beforeMm,
@@ -55,11 +56,20 @@ export async function getModelEdit(id: string, userId: string) {
 }
 
 // 這筆紀錄的所有檔案（刪除時一起刪）
-export const modelEditOwnedUrls = (d: { sourceFileUrl?: string; snapshotUrls?: string[]; fileUrl?: string }) => [
-  d.sourceFileUrl,
-  ...(d.snapshotUrls ?? []),
-  d.fileUrl,
-];
+export const modelEditOwnedUrls = (d: {
+  sourceFileUrl?: string;
+  snapshotUrls?: string[];
+  resultSnapshotUrls?: string[];
+  fileUrl?: string;
+}) => [d.sourceFileUrl, ...(d.snapshotUrls ?? []), ...(d.resultSnapshotUrls ?? []), d.fileUrl];
+
+// 存改好的模型截圖；只在還沒存過時寫入，重複送（例如同時開兩個分頁）不會蓋掉
+export async function saveResultSnapshots(id: string, userId: string, urls: string[]) {
+  if (!isValidObjectId(id)) return false;
+  await connectDB();
+  const result = await ModelEdit.updateOne({ _id: id, userId, resultSnapshotUrls: { $size: 0 } }, { resultSnapshotUrls: urls });
+  return result.modifiedCount > 0;
+}
 
 export async function runModelEdit(
   userId: string,

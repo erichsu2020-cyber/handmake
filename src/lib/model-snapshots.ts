@@ -22,7 +22,12 @@ export type Snapshot = { id: string; label: string; blob: Blob; url: string };
 
 const SIZE = 768;
 
-export async function renderSnapshots(meshes: MeshData[], views: readonly View[] = SNAPSHOT_VIEWS): Promise<Snapshot[]> {
+// cutHeightMm：在離模型底部這個高度畫一片半透明的紅色平面，標示切割位置（AI 改模型的切開做法）
+export async function renderSnapshots(
+  meshes: MeshData[],
+  views: readonly View[] = SNAPSHOT_VIEWS,
+  options: { cutHeightMm?: number } = {},
+): Promise<Snapshot[]> {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf4f4f5);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x9ca3af, 2.2));
@@ -52,6 +57,17 @@ export async function renderSnapshots(meshes: MeshData[], views: readonly View[]
   grid.rotation.x = Math.PI / 2;
   grid.position.set(center.x, center.y, box.min.z);
   scene.add(grid);
+
+  let cutPlane: THREE.Mesh | undefined;
+  if (options.cutHeightMm !== undefined) {
+    const planeSize = Math.max(size.x, size.y) * 1.4 + 10;
+    cutPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(planeSize, planeSize),
+      new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    cutPlane.position.set(center.x, center.y, box.min.z + options.cutHeightMm);
+    scene.add(cutPlane);
+  }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setSize(SIZE, SIZE);
@@ -83,6 +99,10 @@ export async function renderSnapshots(meshes: MeshData[], views: readonly View[]
       if (o instanceof THREE.Mesh) o.geometry.dispose();
     });
     material.dispose();
+    if (cutPlane) {
+      cutPlane.geometry.dispose();
+      (cutPlane.material as THREE.Material).dispose();
+    }
   }
   return snapshots;
 }

@@ -151,6 +151,7 @@ export type EditResult = {
   id: string;
   sourceName: string;
   snapshotUrls: string[];
+  resultSnapshotUrls: string[]; // 改好的模型截圖（ModelEditResult 的 RESULT_VIEWS 順序），還沒拍過是空的
   request: EditRequest;
   plan: AiPlan;
   beforeMm: [number, number, number];

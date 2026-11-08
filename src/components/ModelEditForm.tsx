@@ -6,8 +6,8 @@ import { SnapshotGrid } from "@/components/ModelEditResult";
 import { Check, Chips, Field, Section } from "@/components/form-controls";
 import { readJson, uploadToBlob, useElapsedSeconds } from "@/lib/analysis-client";
 import { readBambuProject } from "@/lib/bambu-project-read";
-import { boundsSize, meshBounds } from "@/lib/mesh";
-import { renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
+import { boundsSize, meshBounds, type MeshData } from "@/lib/mesh";
+import { SNAPSHOT_VIEWS, renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
 import {
   DEFAULT_STEM,
   MAX_MODEL_EDIT_UPLOAD_BYTES,
@@ -37,7 +37,7 @@ const STEM_MODE_OPTIONS = [
   { value: "auto", label: "交給 AI 選" },
 ];
 
-type Picked = { file: File; sizeMm: [number, number, number]; info: string; snapshots: Snapshot[] };
+type Picked = { file: File; meshes: MeshData[]; sizeMm: [number, number, number]; info: string; snapshots: Snapshot[] };
 
 const mm = (v: number[]) => v.map((x) => x.toFixed(1)).join(" × ");
 
@@ -74,7 +74,7 @@ export default function ModelEditForm() {
       const printer = project.config?.printer_settings_id;
       const info = [`${project.objectCount} 個物件`, printer ? `Bambu 專案（${String(printer)}），會保留列印設定` : "一般 3MF（沒有 Bambu 設定）"].join("・");
       setSize(sizeMm.map((v) => Math.round(v * 10) / 10) as [number, number, number]);
-      setPicked({ file, sizeMm, info, snapshots: await renderSnapshots(project.meshes) });
+      setPicked({ file, meshes: project.meshes, sizeMm, info, snapshots: await renderSnapshots(project.meshes) });
     } catch (err) {
       setError(err instanceof Error ? err.message : "讀取檔案失敗");
     } finally {
@@ -204,23 +204,43 @@ export default function ModelEditForm() {
             </Field>
             <StemModeHint mode={stemMode} stem={stem} />
             {stemMode === "split" && (
-              <Field
-                label="切割高度 mm（從底部往上算，留空交給 AI）"
-                hint={`至少 ${(Math.ceil(splitLayout(stem).minBase * 10) / 10).toFixed(1)} mm，底座才裝得下軸；以修改後的尺寸計算${
-                  resizeMode === "ai" ? "（尺寸交給 AI，最後高度不確定）" : `，模型高 ${(resizeMode === "exact" ? size[2] : (picked?.sizeMm[2] ?? 0)).toFixed(1)} mm`
-                }。切口選在模型本來就有分界的地方（例如身體和底座的交界）會比較自然。`}
-              >
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  step={0.5}
-                  value={cutHeight}
-                  placeholder="交給 AI"
-                  onChange={(e) => setCutHeight(e.target.value)}
-                  className={input}
-                />
-              </Field>
+              <>
+                <Field
+                  label="切割高度 mm（從底部往上算，留空交給 AI）"
+                  hint={`至少 ${(Math.ceil(splitLayout(stem).minBase * 10) / 10).toFixed(1)} mm，底座才裝得下軸；以修改後的尺寸計算${
+                    resizeMode === "ai" ? "（尺寸交給 AI，最後高度不確定）" : `，模型高 ${(resizeMode === "exact" ? size[2] : (picked?.sizeMm[2] ?? 0)).toFixed(1)} mm`
+                  }。切口選在模型本來就有分界的地方（例如身體和底座的交界）會比較自然。`}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={0.5}
+                    value={cutHeight}
+                    placeholder="交給 AI"
+                    onChange={(e) => setCutHeight(e.target.value)}
+                    className={input}
+                  />
+                </Field>
+                {picked && (
+                  <CutPreview
+                    meshes={picked.meshes}
+                    // 預覽用的是原始模型：把修改後的切割高度換回原始尺寸；尺寸交給 AI 時不知道倍率
+                    cutHeightMm={
+                      cutHeight === "" || resizeMode === "ai"
+                        ? undefined
+                        : Number(cutHeight) / (resizeMode === "exact" ? size[2] / picked.sizeMm[2] : 1)
+                    }
+                    note={
+                      cutHeight === ""
+                        ? "填入切割高度後，這裡會用紅色標出切開的位置"
+                        : resizeMode === "ai"
+                          ? "尺寸交給 AI 時，最後高度不確定，無法預覽切割位置"
+                          : undefined
+                    }
+                  />
+                )}
+              </>
             )}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {/* 底座方孔只有切開做法用得到 */}
@@ -275,6 +295,48 @@ export default function ModelEditForm() {
       </button>
       <p className="text-center text-xs text-zinc-500">每次修改會使用 OpenAI 點數。第一次用新的間隙，建議先印一個小的測試鬆緊。</p>
     </form>
+  );
+}
+
+// 切割位置預覽：從平台前方、右側看，紅色平面是切口；輸入停下來 0.4 秒後才重畫
+function CutPreview({ meshes, cutHeightMm, note }: { meshes: MeshData[]; cutHeightMm?: number; note?: string }) {
+  const [shots, setShots] = useState<Snapshot[]>([]);
+  const valid = cutHeightMm !== undefined && Number.isFinite(cutHeightMm) && cutHeightMm > 0;
+
+  useEffect(() => {
+    if (!valid) return;
+    let cancelled = false;
+    let rendered: Snapshot[] = [];
+    const timer = setTimeout(async () => {
+      try {
+        rendered = await renderSnapshots(meshes, SNAPSHOT_VIEWS.slice(0, 2), { cutHeightMm });
+        if (cancelled) rendered.forEach((s) => URL.revokeObjectURL(s.url));
+        else setShots(rendered);
+      } catch (err) {
+        console.error("切割位置預覽失敗", err);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      rendered.forEach((s) => URL.revokeObjectURL(s.url));
+    };
+  }, [meshes, cutHeightMm, valid]);
+
+  if (!valid) return note ? <p className="text-sm text-zinc-500">{note}</p> : null;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+        {shots.map((s) => (
+          <figure key={s.id} className="flex flex-col gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.url} alt={s.label} className="aspect-square w-full rounded-lg border border-zinc-300 dark:border-zinc-700" />
+            <figcaption className="text-center text-xs text-zinc-500">{s.label}</figcaption>
+          </figure>
+        ))}
+      </div>
+      <p className="text-xs text-zinc-500">紅色平面是切割位置：下面是底座，上面是本體。</p>
+    </div>
   );
 }
 

@@ -9,6 +9,8 @@ const modelEditSchema = new Schema(
     // 上傳的 3MF、修改前的截圖、改好的 3MF：都是這筆紀錄自己的檔案（刪除紀錄時一起刪）
     sourceFileUrl: { type: String, required: true },
     snapshotUrls: { type: [String], default: [] },
+    // 改好的模型的截圖：第一次打開結果頁時由瀏覽器拍好上傳，之後直接顯示
+    resultSnapshotUrls: { type: [String], default: [] },
     fileUrl: { type: String, required: true },
     fileName: { type: String, required: true },
 
