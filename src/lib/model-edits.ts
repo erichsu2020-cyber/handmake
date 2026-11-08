@@ -113,7 +113,9 @@ export async function runModelEdit(
             // 使用者指定的做法優先，AI 只決定位置和切割高度
             mode: request.stemMode && request.stemMode !== "auto" ? request.stemMode : plan.stem.mode,
             offsetMm: [plan.stem.offsetXMm, plan.stem.offsetYMm],
-            cutHeightMm: plan.stem.cutHeightMm || undefined,
+            // 使用者指定的切割高度優先，而且不會被程式自動調整
+            cutHeightMm: request.cutHeightMm ?? (plan.stem.cutHeightMm || undefined),
+            cutFixed: request.cutHeightMm !== undefined,
           }
         : undefined,
     });

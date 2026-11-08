@@ -52,6 +52,8 @@ export default function ModelEditForm() {
   const [stemOn, setStemOn] = useState(true);
   const [stem, setStem] = useState<StemSpec>(DEFAULT_STEM);
   const [stemMode, setStemMode] = useState<StemMode | "auto">("split");
+  // 切割高度：空字串代表交給 AI
+  const [cutHeight, setCutHeight] = useState("");
   const [notes, setNotes] = useState("");
   const [phase, setPhase] = useState<"idle" | "uploading" | "working">("idle");
   const elapsed = useElapsedSeconds(phase === "working");
@@ -102,6 +104,7 @@ export default function ModelEditForm() {
       resize: { mode: resizeMode, sizeMm: resizeMode === "exact" ? size : undefined },
       stem: stemOn ? stem : null,
       stemMode,
+      cutHeightMm: stemOn && stemMode === "split" && cutHeight !== "" ? Number(cutHeight) : undefined,
       notes,
     };
     const parsed = parseEditRequest(request);
@@ -200,6 +203,25 @@ export default function ModelEditForm() {
               <Chips options={STEM_MODE_OPTIONS} value={stemMode} onChange={(v) => setStemMode(v as StemMode | "auto")} />
             </Field>
             <StemModeHint mode={stemMode} stem={stem} />
+            {stemMode === "split" && (
+              <Field
+                label="切割高度 mm（從底部往上算，留空交給 AI）"
+                hint={`至少 ${(Math.ceil(splitLayout(stem).minBase * 10) / 10).toFixed(1)} mm，底座才裝得下軸；以修改後的尺寸計算${
+                  resizeMode === "ai" ? "（尺寸交給 AI，最後高度不確定）" : `，模型高 ${(resizeMode === "exact" ? size[2] : (picked?.sizeMm[2] ?? 0)).toFixed(1)} mm`
+                }。切口選在模型本來就有分界的地方（例如身體和底座的交界）會比較自然。`}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  step={0.5}
+                  value={cutHeight}
+                  placeholder="交給 AI"
+                  onChange={(e) => setCutHeight(e.target.value)}
+                  className={input}
+                />
+              </Field>
+            )}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {/* 底座方孔只有切開做法用得到 */}
               {STEM_FIELDS.filter((f) => f.key !== "plateHole" || stemMode === "split" || stemMode === "auto").map((f) => (

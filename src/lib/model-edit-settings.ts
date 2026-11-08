@@ -50,6 +50,8 @@ export const stemClearanceHeight = (s: StemSpec) => s.travel + 0.5;
 // 底部凹槽的大小：MX 軸體底座約 15.6 mm 見方
 export const POCKET_MM = 16.5;
 export const POCKET_WALL_MM = 1.6;
+// 切開做法：凹槽外面至少留的牆厚（0.4 mm 噴嘴 3 條線）；模型身體常常比底部窄，用 1.6 會把很多高度判定成切不了
+export const SPLIT_WALL_MM = 1.2;
 
 // Cherry MX 外型（以定位板上緣為 0）：未按時十字軸頂 11.6、軸體上蓋頂約 6.6；
 // 卡扣是照 1.5 mm 定位板設計的；定位板下方是下蓋 5.0 加針腳 3.3
@@ -65,18 +67,21 @@ export const BASE_FLOOR_MM = 2;
 // - 本體和底座之間留 gap（行程 + 0.5），按到底才不會撞到底座
 // - 底座頂面比定位板高 recess：底座上方挖凹槽讓軸體上蓋陷進去，本體才不會被墊太高
 // - 本體底部凹槽高 pocket：按到底時軸體上蓋會伸進來（多留 1 mm）
-// - 底座至少 minBase 高：裝得下軸的下蓋和針腳，下面還有實心底板
+// - 底座從切口往下挖 cavity 深的凹槽裝軸（軸的下蓋和針腳），凹槽以下都是實心的
+// - 底座至少 minBase 高：凹槽下面還要有實心底板
 export function splitLayout(s: StemSpec) {
   const rest = MX_STEM_TOP - s.depth;
   const recess = Math.max(0, rest - (s.travel + 0.5));
   const gap = rest - recess;
   const pocket = Math.max(1, MX_HOUSING_TOP + 1 - (rest - s.travel));
-  return { rest, gap, recess, pocket, minBase: recess + MX_PLATE + MX_BELOW_PLATE + 0.5 + BASE_FLOOR_MM };
+  const cavity = recess + MX_PLATE + MX_BELOW_PLATE + 0.5;
+  return { rest, gap, recess, pocket, cavity, minBase: cavity + BASE_FLOOR_MM };
 }
 export type EditRequest = {
   resize: { mode: ResizeMode; sizeMm?: [number, number, number] };
   stem: StemSpec | null; // null：不加十字孔
   stemMode?: StemMode | "auto"; // auto：交給 AI 選；早期紀錄沒有這個欄位（都是 AI 選的）
+  cutHeightMm?: number; // 切開做法：使用者指定的切割高度（從修改後模型的底部算）；沒給就交給 AI
   notes: string;
 };
 
@@ -103,6 +108,13 @@ export function parseEditRequest(input: unknown): EditRequest | string {
   }
   const stemMode = r.stemMode ?? "auto";
   if (stemMode !== "auto" && !(stemMode in STEM_MODES)) return "十字孔做法不正確";
+  const cutHeightMm = r.cutHeightMm ?? undefined;
+  if (cutHeightMm !== undefined) {
+    if (!stem || stemMode !== "split") return "只有切開做法可以指定切割高度";
+    if (!between(cutHeightMm, 1, 500)) return "切割高度要介於 1–500 mm";
+    const min = splitLayout(stem).minBase;
+    if (cutHeightMm < min) return `切割高度至少要 ${Math.ceil(min * 10) / 10} mm，底座才裝得下鍵盤軸`;
+  }
   if (typeof r.notes !== "string" || r.notes.length > 1000) return "需求說明不能超過 1000 字";
   if (resize.mode === "ai" && !r.notes.trim()) return "讓 AI 決定尺寸時，請在需求說明寫想要的大小或用途";
   if (resize.mode === "keep" && !stem) return "請至少選一個要修改的項目";
@@ -110,6 +122,7 @@ export function parseEditRequest(input: unknown): EditRequest | string {
     resize: { mode: resize.mode, sizeMm: resize.mode === "exact" ? resize.sizeMm : undefined },
     stem,
     stemMode,
+    cutHeightMm,
     notes: r.notes.trim(),
   };
 }

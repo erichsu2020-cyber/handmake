@@ -110,6 +110,7 @@ export default function ModelEditResult({ edit }: { edit: EditResult }) {
               ? [
                   // 早期紀錄沒有做法和底座方孔
                   request.stemMode && (request.stemMode === "auto" ? "做法交給 AI" : STEM_MODES[request.stemMode]),
+                  request.cutHeightMm !== undefined && `指定切割高度 ${request.cutHeightMm}`,
                   ...STEM_FIELDS.filter((f) => request.stem![f.key] !== undefined).map((f) => `${f.label} ${request.stem![f.key]}`),
                 ]
                   .filter(Boolean)
