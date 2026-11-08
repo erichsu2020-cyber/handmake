@@ -14,6 +14,7 @@ import {
   PRINT_REVIEW_SNAPSHOT_FOLDER,
   PRINT_REVIEW_UPLOAD_FOLDER,
 } from "@/lib/print-review-settings";
+import { MAX_MODEL_EDIT_UPLOAD_BYTES, MODEL_EDIT_SNAPSHOT_FOLDER, MODEL_EDIT_UPLOAD_FOLDER } from "@/lib/model-edit-settings";
 
 const IMAGES = { types: ["image/png", "image/jpeg", "image/webp"], maxBytes: 20 * 1024 * 1024 };
 // 瀏覽器只能上傳到這幾個資料夾，不能覆蓋產出的圖片或模型
@@ -30,6 +31,9 @@ const FOLDERS = [
   { prefix: PRINT_REVIEW_PHOTO_FOLDER, types: ["image/jpeg", "image/png", "image/webp"], maxBytes: MAX_PHOTO_BYTES },
   { prefix: PRINT_REVIEW_SNAPSHOT_FOLDER, types: ["image/png", "image/jpeg"], maxBytes: MAX_SNAPSHOT_BYTES },
   { prefix: PRINT_REVIEW_UPLOAD_FOLDER, types: ["model/3mf"], maxBytes: MAX_PRINT_CHECK_UPLOAD_BYTES },
+  // AI 改模型：上傳的 3MF、模型截圖
+  { prefix: MODEL_EDIT_UPLOAD_FOLDER, types: ["model/3mf"], maxBytes: MAX_MODEL_EDIT_UPLOAD_BYTES },
+  { prefix: MODEL_EDIT_SNAPSHOT_FOLDER, types: ["image/jpeg"], maxBytes: MAX_SNAPSHOT_BYTES },
 ];
 
 // 瀏覽器直接上傳到 Vercel Blob：這裡只檢查登入和檔案限制，再發一張短期的上傳許可，

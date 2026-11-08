@@ -14,11 +14,15 @@ export const SNAPSHOT_VIEWS = [
   { id: "iso", label: "從右前上方", dir: [1, -1, 0.9] },
 ] as const;
 
+// 從正下方看底部（AI 改模型用來看十字孔）
+export const BOTTOM_VIEW = { id: "bottom", label: "從正下方", dir: [0, 0.001, -1] } as const;
+type View = { id: string; label: string; dir: readonly number[] };
+
 export type Snapshot = { id: string; label: string; blob: Blob; url: string };
 
 const SIZE = 768;
 
-export async function renderSnapshots(meshes: MeshData[]): Promise<Snapshot[]> {
+export async function renderSnapshots(meshes: MeshData[], views: readonly View[] = SNAPSHOT_VIEWS): Promise<Snapshot[]> {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf4f4f5);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x9ca3af, 2.2));
@@ -57,13 +61,16 @@ export async function renderSnapshots(meshes: MeshData[]): Promise<Snapshot[]> {
 
   const snapshots: Snapshot[] = [];
   try {
-    for (const view of SNAPSHOT_VIEWS) {
-      const dir = new THREE.Vector3(...view.dir).normalize();
+    for (const view of views) {
+      const dir = new THREE.Vector3(...(view.dir as [number, number, number])).normalize();
+      const vertical = view.id === "top" || view.id === "bottom";
+      // 從下面看時格線會擋住底部
+      grid.visible = view.id !== "bottom";
       camera.position.copy(center).addScaledVector(dir, distance);
       // 從正上方往下看時，「上」改成 +Y，畫面才不會轉向
-      camera.up.set(0, view.id === "top" ? 1 : 0, view.id === "top" ? 0 : 1);
+      camera.up.set(0, vertical ? 1 : 0, vertical ? 0 : 1);
       camera.lookAt(center);
-      sun.position.copy(camera.position).add(new THREE.Vector3(radius, -radius, radius * 2));
+      sun.position.copy(camera.position).add(new THREE.Vector3(radius, -radius, view.id === "bottom" ? -radius * 2 : radius * 2));
       renderer.render(scene, camera);
       const blob = await new Promise<Blob>((resolve, reject) =>
         renderer.domElement.toBlob((b) => (b ? resolve(b) : reject(new Error("截圖失敗"))), "image/jpeg", 0.9),

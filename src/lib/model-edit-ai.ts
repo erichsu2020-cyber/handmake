@@ -1,0 +1,135 @@
+import "server-only";
+import OpenAI from "openai";
+import type { GeometryReport } from "@/lib/bambu-project";
+import { TEXT_MODEL } from "@/lib/print-check-ai";
+import {
+  POCKET_MM,
+  POCKET_WALL_MM,
+  STEM_FIELDS,
+  STEM_MODES,
+  stemClearanceHeight,
+  type AiPlan,
+  type EditRequest,
+} from "@/lib/model-edit-settings";
+
+// 把模型數據、截圖和使用者的需求交給 OpenAI，請它決定「改成多大」「十字孔做在哪、用哪種做法」
+// AI 只回參數，實際的網格運算由 model-edit-geometry.ts 精準計算
+
+const INSTRUCTIONS = `你是 3D 列印產品設計師，專門把小模型改造成可以裝在機械鍵盤軸（Cherry MX 類）上的「按壓回彈」小物，例如桌上的按壓公仔、紓壓按鈕、鍵帽造型。
+
+你要根據模型截圖、幾何數據和使用者的需求，決定修改計畫。程式會依你的參數精準修改網格，你不用輸出模型。
+
+尺寸（targetSizeMm）：
+- 單位 mm，width 是 X（左右）、depth 是 Y（前後）、height 是 Z（高）。
+- 尺寸模式是「不改」或「指定」時，照抄提供的目標尺寸，sizeReason 簡短說明即可。
+- 尺寸模式是「AI 決定」時，依需求說明決定；沒有特別要求變形時保持原本比例（三個軸同一個倍率）。
+- 裝在單顆鍵盤軸上的模型，底面通常 18–40 mm、高 15–60 mm 比較穩；太大太重按起來會歪、回彈無力。
+
+十字孔（stem）：
+- 柱座和十字孔一律做在模型「目前的底部」（Z 最低、貼平台那面），讓模型站在軸上；看截圖判斷底部是不是模型的正確下方，如果看起來不是（例如模型是躺著的），要在 warnings 提醒使用者先在 Bambu Studio 轉正再來。
+- offsetXMm、offsetYMm 是十字孔中心相對於「模型底面中心」的位移，通常放 0, 0；模型重心明顯偏一邊時（例如有尾巴、舉手），往重心方向移，讓按壓時不會歪。
+- mode 兩種：
+  - pocket（${STEM_MODES.pocket}）：底部挖一個 ${POCKET_MM} mm 見方的凹槽讓軸體上蓋退進去，柱座藏在凹槽裡，外觀最乾淨。需要底面平、而且整片至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方都是實心的底面。
+  - protrude（${STEM_MODES.protrude}）：柱座從模型底部往下凸出，模型像站在一根短柱上。任何形狀都能用（腳、圓底、小底面），但按壓時模型底部和軸體上蓋之間會看到柱子。
+  - 不確定底面夠不夠大、平不平時選 protrude；程式發現 pocket 做不到時也會自動改用 protrude。
+- 十字孔尺寸由使用者決定，你不能改；如果覺得尺寸或間隙不合理（例如比 MX 規格小很多會插不進去），寫在 warnings。
+
+warnings：修改後可能的問題（按壓會歪、太重、太細的部位、柱座附近太薄、方向不對…）。沒有就給空陣列。
+printAdvice：列印建議，例如擺放方向、要不要支撐、層高、牆數、先印一個試裝片測試間隙。柱座凸出時模型懸在柱子上，要提醒需要支撐或考慮倒過來印。
+全部用繁體中文，口吻讓新手看得懂，summary 用 2–3 句話說明你的計畫。`;
+
+function planSchema() {
+  const text = { type: "string" };
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["summary", "targetSizeMm", "sizeReason", "stem", "warnings", "printAdvice"],
+    properties: {
+      summary: text,
+      targetSizeMm: {
+        type: "object",
+        additionalProperties: false,
+        required: ["width", "depth", "height"],
+        properties: { width: { type: "number" }, depth: { type: "number" }, height: { type: "number" } },
+      },
+      sizeReason: text,
+      stem: {
+        type: "object",
+        additionalProperties: false,
+        required: ["mode", "offsetXMm", "offsetYMm", "reason"],
+        properties: {
+          mode: { type: "string", enum: Object.keys(STEM_MODES) },
+          offsetXMm: { type: "number" },
+          offsetYMm: { type: "number" },
+          reason: text,
+        },
+      },
+      warnings: { type: "array", items: text },
+      printAdvice: { type: "array", items: text },
+    },
+  };
+}
+
+export type PlanInput = {
+  request: EditRequest;
+  geometry: GeometryReport;
+  // 不改或指定尺寸時，程式已經算好的目標尺寸
+  fixedSizeMm?: [number, number, number];
+  images: string[];
+};
+
+function buildPlanText({ request, geometry, fixedSizeMm, images }: PlanInput) {
+  const mm = (v: number[]) => v.map((x) => x.toFixed(1)).join(" × ");
+  const s = request.stem;
+  return [
+    "## 模型目前的數據（已套用 3MF 裡的擺放方向）",
+    "```json",
+    JSON.stringify(geometry, null, 2),
+    "```",
+    "說明：sizeMm 是寬×深×高；baseContactAreaMm2 是貼平台的面積；heightToBase 是高度 ÷ 底面等效寬度（越大越容易倒）；openEdges／nonManifoldEdges > 0 代表網格有問題，可能無法挖孔。",
+    "",
+    "## 尺寸",
+    request.resize.mode === "ai"
+      ? "- 尺寸模式：AI 決定（請依需求說明決定 targetSizeMm）"
+      : `- 尺寸模式：${request.resize.mode === "keep" ? "不改" : "指定"}，目標尺寸 ${mm(fixedSizeMm!)} mm（請照抄）`,
+    "",
+    "## 鍵盤軸十字孔",
+    s
+      ? [
+          "- 要加十字孔（使用者輸入的尺寸，單位 mm）：",
+          ...STEM_FIELDS.map((f) => `  - ${f.label}：${s[f.key]}`),
+          `- 程式算出柱座下方要留 ${stemClearanceHeight(s).toFixed(1)} mm 的退讓空間（按到底時不撞到軸體）`,
+        ].join("\n")
+      : "- 不加十字孔（stem 欄位隨意填 protrude、0、0，reason 寫「不需要」）",
+    "",
+    "## 需求說明",
+    request.notes || "（沒有）",
+    "",
+    images.length > 0
+      ? `附上 ${images.length} 張修改前的模型截圖，依序是從平台前方、平台右側、正上方、右前上方看。灰色是模型、格線是列印平台（模型底部）。`
+      : "沒有模型截圖，請只根據數據判斷。",
+  ].join("\n");
+}
+
+export async function planModelEdit(input: PlanInput): Promise<AiPlan> {
+  const openai = new OpenAI();
+  const response = await openai.responses.create({
+    model: TEXT_MODEL,
+    instructions: INSTRUCTIONS,
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: buildPlanText(input) },
+          ...input.images.map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
+        ],
+      },
+    ],
+    text: { format: { type: "json_schema", name: "model_edit_plan", schema: planSchema(), strict: true } },
+  });
+  try {
+    return JSON.parse(response.output_text) as AiPlan;
+  } catch {
+    throw new Error("AI 回傳的格式不正確，請再試一次");
+  }
+}

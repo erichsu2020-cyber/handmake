@@ -2,11 +2,11 @@ import Module from "manifold-3d";
 import type { MeshData } from "@/lib/mesh";
 
 // 切開、空心化需要「封閉網格」的布林運算，用 manifold-3d（WASM）處理
-type Wasm = Awaited<ReturnType<typeof Module>>;
-type Manifold = InstanceType<Wasm["Manifold"]>;
+export type Wasm = Awaited<ReturnType<typeof Module>>;
+export type Manifold = InstanceType<Wasm["Manifold"]>;
 
 let wasmPromise: Promise<Wasm> | null = null;
-function loadWasm() {
+export function loadWasm() {
   wasmPromise ??= Module().then((wasm) => {
     wasm.setup();
     return wasm;
@@ -55,7 +55,7 @@ export async function applyMeshOps(meshes: MeshData[], ops: MeshOps): Promise<Me
   return pieces.map((piece) => fromManifold(piece));
 }
 
-function toManifold(wasm: Wasm, meshes: MeshData[]): Manifold {
+export function toManifold(wasm: Wasm, meshes: MeshData[]): Manifold {
   const vertCount = meshes.reduce((sum, m) => sum + m.positions.length, 0);
   const triCount = meshes.reduce((sum, m) => sum + m.indices.length, 0);
   const vertProperties = new Float32Array(vertCount);
@@ -79,7 +79,7 @@ function toManifold(wasm: Wasm, meshes: MeshData[]): Manifold {
   }
 }
 
-function fromManifold(solid: Manifold): MeshData {
+export function fromManifold(solid: Manifold): MeshData {
   const mesh = solid.getMesh();
   const positions = new Float32Array(mesh.numVert * 3);
   for (let v = 0; v < mesh.numVert; v++) {
