@@ -30,7 +30,7 @@ const INSTRUCTIONS = `你是 3D 列印產品設計師，專門把小模型改造
 - 柱座和十字孔一律做在模型「目前的底部」（Z 最低、貼平台那面），讓模型站在軸上；看截圖判斷底部是不是模型的正確下方，如果看起來不是（例如模型是躺著的），要在 warnings 提醒使用者先在 Bambu Studio 轉正再來。
 - offsetXMm、offsetYMm 是十字孔中心相對於「模型底面中心」的位移，通常放 0, 0；模型重心明顯偏一邊時（例如有尾巴、舉手），往重心方向移，讓按壓時不會歪。
 - mode 三種：
-  - split（${STEM_MODES.split}）：在模型底部往上 cutHeightMm 的地方切一刀。上半部（本體）底部內嵌十字孔，十字孔藏在模型裡；下半部（底座）挖空把鍵盤軸裝進去，按本體就會壓到軸。外觀最完整，但切割高度的截面和以下的部分都要有至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方的實心區域。切口最好選在模型本來就有分界的地方（例如底座和身體的交界、衣服下襬），切出來比較自然。
+  - split（${STEM_MODES.split}）：在模型底部往上 cutHeightMm 的地方切一刀。上半部（本體）底部內嵌十字孔，十字孔藏在模型裡；下半部（底座）從切口往下挖凹槽把鍵盤軸裝進去（底面是實心的），按本體就會壓到軸。外觀最完整，但切割高度的截面和以下的部分都要有至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方的實心區域。切口最好選在模型本來就有分界的地方（例如底座和身體的交界、衣服下襬），切出來比較自然。
   - pocket（${STEM_MODES.pocket}）：底部挖一個 ${POCKET_MM} mm 見方的凹槽讓軸體上蓋退進去，柱座藏在凹槽裡，外觀最乾淨。需要底面平、而且整片至少 ${POCKET_MM + POCKET_WALL_MM * 2} mm 見方都是實心的底面。
   - protrude（${STEM_MODES.protrude}）：柱座從模型底部往下凸出，模型像站在一根短柱上。任何形狀都能用（腳、圓底、小底面），但按壓時模型底部和軸體上蓋之間會看到柱子。
   - 不確定底面夠不夠大、平不平時選 protrude；程式發現 pocket 做不到時也會自動改用 protrude。
@@ -108,7 +108,7 @@ function buildPlanText({ request, geometry, fixedSizeMm, images }: PlanInput) {
             ? `- 做法：使用者指定 ${request.stemMode}（${STEM_MODES[request.stemMode]}），mode 請照抄`
             : "- 做法：交給你選",
           `- protrude／pocket：柱座下方要留 ${stemClearanceHeight(s).toFixed(1)} mm 的退讓空間（按到底時不撞到軸體）`,
-          `- split：底座最少 ${split!.minBase.toFixed(1)} mm 高（裝得下軸的下蓋和針腳），組裝後本體和底座之間有 ${split!.gap.toFixed(1)} mm 間隙（按壓行程），總高度會多這麼多`,
+          `- split：底座最少 ${split!.minBase.toFixed(1)} mm 高（裝得下軸的下蓋和針腳，底部保留實心底板），組裝後本體和底座之間有 ${split!.gap.toFixed(1)} mm 間隙（按壓行程），總高度會多這麼多`,
         ].join("\n")
       : "- 不加十字孔（stem 欄位隨意填 protrude、0、0、0，reason 寫「不需要」）",
     "",

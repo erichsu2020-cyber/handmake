@@ -259,7 +259,7 @@ export default function ModelEditForm() {
 function StemModeHint({ mode, stem }: { mode: StemMode | "auto"; stem: StemSpec }) {
   const split = splitLayout(stem);
   const text = {
-    split: `模型底部往上切一刀：上半部（本體）底部內嵌十字孔，下半部（底座）挖空裝鍵盤軸，軸從底座上方壓進 ${stem.plateHole} mm 方孔卡住。底座至少 ${split.minBase.toFixed(1)} mm 高，組裝後本體和底座之間有 ${split.gap.toFixed(1)} mm 間隙讓你按。模型底部要有約 20 mm 見方的實心區域。`,
+    split: `模型底部往上切一刀：上半部（本體）底部內嵌十字孔，下半部（底座）從切口往下挖凹槽裝鍵盤軸（底面是實心的），軸從底座上方壓進 ${stem.plateHole} mm 方孔卡住。底座至少 ${split.minBase.toFixed(1)} mm 高，組裝後本體和底座之間有 ${split.gap.toFixed(1)} mm 間隙讓你按。模型底部要有約 20 mm 見方的實心區域。`,
     protrude: `柱座從模型底部往下凸出 ${stemClearanceHeight(stem).toFixed(1)} mm，任何形狀都能做，但看得到柱子。`,
     pocket: `底部挖凹槽讓軸體退進去（像鍵帽），底面要平、約 20 mm 見方。`,
     auto: "AI 看模型的形狀和大小選做法。",

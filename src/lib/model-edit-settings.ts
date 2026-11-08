@@ -57,19 +57,21 @@ const MX_STEM_TOP = 11.6;
 const MX_HOUSING_TOP = 6.6;
 export const MX_PLATE = 1.5;
 const MX_BELOW_PLATE = 8.3;
+// 底座凹槽下面保留的實心底板
+export const BASE_FLOOR_MM = 2;
 
 // 切開做法的高度（單位 mm）：
 // - 本體底面跟柱座底面齊平，套在十字軸上，未按時離定位板 rest
 // - 本體和底座之間留 gap（行程 + 0.5），按到底才不會撞到底座
 // - 底座頂面比定位板高 recess：底座上方挖凹槽讓軸體上蓋陷進去，本體才不會被墊太高
 // - 本體底部凹槽高 pocket：按到底時軸體上蓋會伸進來（多留 1 mm）
-// - 底座至少 minBase 高，軸的下蓋和針腳才不會凸出底座底面
+// - 底座至少 minBase 高：裝得下軸的下蓋和針腳，下面還有實心底板
 export function splitLayout(s: StemSpec) {
   const rest = MX_STEM_TOP - s.depth;
   const recess = Math.max(0, rest - (s.travel + 0.5));
   const gap = rest - recess;
   const pocket = Math.max(1, MX_HOUSING_TOP + 1 - (rest - s.travel));
-  return { rest, gap, recess, pocket, minBase: recess + MX_PLATE + MX_BELOW_PLATE + 0.5 };
+  return { rest, gap, recess, pocket, minBase: recess + MX_PLATE + MX_BELOW_PLATE + 0.5 + BASE_FLOOR_MM };
 }
 export type EditRequest = {
   resize: { mode: ResizeMode; sizeMm?: [number, number, number] };

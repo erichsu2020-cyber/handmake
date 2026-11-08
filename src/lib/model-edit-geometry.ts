@@ -2,6 +2,7 @@ import type { MeshData } from "@/lib/mesh";
 import { boundsSize, meshBounds, scaleMeshes } from "@/lib/mesh";
 import { arrangeSideBySide, fromManifold, loadWasm, toManifold, type Manifold, type Wasm } from "@/lib/mesh-ops";
 import {
+  BASE_FLOOR_MM,
   MX_PLATE,
   POCKET_MM,
   POCKET_WALL_MM,
@@ -120,7 +121,7 @@ const centeredBox = (wasm: Wasm, size: number, [cx, cy]: [number, number], z: nu
 // 切開做法：模型在 cut 高度切一刀
 // - 本體（上半部）：底部挖凹槽讓按到底的軸體上蓋伸進來，凹槽中間的柱座跟底面齊平，柱座裡是十字孔
 // - 底座（下半部）：上方凹槽讓軸體上蓋陷進去，接著是 1.5 mm 厚、開方孔的卡板（軸的卡扣扣在這裡），
-//   下方挖空放軸的下蓋和針腳，一路通到底面（接線用）
+//   下方挖空放軸的下蓋和針腳；凹槽不穿透，底面保留 BASE_FLOOR_MM 的實心底板
 // 高度怎麼算見 splitLayout；兩個部件並排放在平台上，各自正著印
 function splitWithStem(
   wasm: Wasm,
@@ -172,8 +173,8 @@ function splitWithStem(
 
   const plateBottom = cut - layout.recess - MX_PLATE;
   let base = bottom
-    .subtract(centeredBox(wasm, spec.plateHole, center, -0.01, cut + 0.02))
-    .subtract(centeredBox(wasm, POCKET_MM, center, -0.01, plateBottom + 0.01));
+    .subtract(centeredBox(wasm, spec.plateHole, center, BASE_FLOOR_MM, cut - BASE_FLOOR_MM + 0.01))
+    .subtract(centeredBox(wasm, POCKET_MM, center, BASE_FLOOR_MM, plateBottom - BASE_FLOOR_MM + 0.01));
   if (layout.recess > 0) base = base.subtract(centeredBox(wasm, POCKET_MM, center, cut - layout.recess, layout.recess + 0.01));
 
   const meshes = arrangeSideBySide([base, body]).map(fromManifold);
@@ -221,8 +222,8 @@ function findCut(
     for (let cut = Math.ceil(start / STEP) * STEP; cut <= height * 0.7; cut += STEP) {
       const top = cut + above;
       let ok = top <= height;
-      // 底面最下面 1 mm 常是圓角，不檢查；切口那一層本身不檢查
-      for (let z = 1; ok && z <= top + 1e-6; z += STEP) {
+      // 實心底板的範圍不用檢查（凹槽從底板上面開始）；切口那一層本身不檢查
+      for (let z = Math.ceil(BASE_FLOOR_MM / STEP) * STEP + STEP; ok && z <= top + 1e-6; z += STEP) {
         if (Math.abs(z - cut) < 1e-6) continue;
         ok = covered[i][Math.round(z / STEP) - 1] ?? false;
       }
