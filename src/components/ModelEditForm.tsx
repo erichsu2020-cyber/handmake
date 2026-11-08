@@ -1,30 +1,27 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { SnapshotGrid } from "@/components/ModelEditResult";
 import { Check, Chips, Field, Section } from "@/components/form-controls";
 import { readJson, uploadToBlob, useElapsedSeconds } from "@/lib/analysis-client";
 import { readBambuProject } from "@/lib/bambu-project-read";
 import { boundsSize, meshBounds } from "@/lib/mesh";
-import { BOTTOM_VIEW, SNAPSHOT_VIEWS, renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
+import { renderSnapshots, type Snapshot } from "@/lib/model-snapshots";
 import {
   DEFAULT_STEM,
   MAX_MODEL_EDIT_UPLOAD_BYTES,
   MODEL_EDIT_SNAPSHOT_FOLDER,
   MODEL_EDIT_UPLOAD_FOLDER,
   STEM_FIELDS,
-  STEM_MODES,
   parseEditRequest,
   stemClearanceHeight,
   type EditRequest,
-  type EditResult,
   type ResizeMode,
   type StemSpec,
 } from "@/lib/model-edit-settings";
 
-const ModelPreview = dynamic(() => import("@/components/ModelPreview"), { ssr: false });
-
-// 「AI 改模型」：上傳 3MF → 選要改的項目 → AI 決定參數、程式修改網格 → 下載新的 3MF
+// 「AI 改模型」：上傳 3MF → 選要改的項目 → AI 決定參數、程式修改網格 → 跳到修改紀錄
 
 const RESIZE_OPTIONS: { value: ResizeMode; label: string }[] = [
   { value: "keep", label: "不改尺寸" },
@@ -38,6 +35,7 @@ type Picked = { file: File; sizeMm: [number, number, number]; info: string; snap
 const mm = (v: number[]) => v.map((x) => x.toFixed(1)).join(" × ");
 
 export default function ModelEditForm() {
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState<Picked | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -50,14 +48,12 @@ export default function ModelEditForm() {
   const [phase, setPhase] = useState<"idle" | "uploading" | "working">("idle");
   const elapsed = useElapsedSeconds(phase === "working");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<EditResult | null>(null);
 
   // 換檔案時釋放舊截圖的網址
   useEffect(() => () => picked?.snapshots.forEach((s) => URL.revokeObjectURL(s.url)), [picked]);
 
   async function choose(file: File) {
     setPicked(null);
-    setResult(null);
     setError(null);
     try {
       if (!file.name.toLowerCase().endsWith(".3mf")) throw new Error("請選擇 .3mf 檔");
@@ -105,7 +101,6 @@ export default function ModelEditForm() {
       return;
     }
     setError(null);
-    setResult(null);
     setPhase("uploading");
     try {
       const [fileUrl, ...snapshotUrls] = await Promise.all([
@@ -120,10 +115,9 @@ export default function ModelEditForm() {
       });
       const data = await readJson(res);
       if (!res.ok) throw new Error(data.error ?? "修改失敗");
-      setResult(data.result);
+      router.push(`/model-edits/${data.edit.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "修改失敗");
-    } finally {
       setPhase("idle");
     }
   }
@@ -132,203 +126,118 @@ export default function ModelEditForm() {
   const input = "w-24 rounded-lg border border-zinc-300 bg-transparent p-2 dark:border-zinc-700";
 
   return (
-    <div className="flex flex-col gap-6">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        <Section title="1. 上傳 3MF" disabled={busy}>
-          <Field label="模型檔" hint="Bambu Studio 專案或一般 3MF，50MB 以內；十字孔做在模型目前的底部（貼平台那面）">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="rounded-full border border-zinc-300 px-3.5 py-1.5 text-sm dark:border-zinc-700"
-              >
-                {picked ? `已選擇：${picked.file.name}` : "選擇 3MF 檔"}
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".3mf"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && choose(e.target.files[0])}
-              />
-            </div>
-          </Field>
-          {preparing && <p className="text-sm text-zinc-500">讀取模型並拍攝 3D 截圖中…</p>}
-          {picked && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm">
-                目前尺寸 <span className="font-medium">{mm(picked.sizeMm)} mm</span>
-                <span className="text-zinc-500">・{picked.info}</span>
-              </p>
-              <SnapshotGrid snapshots={picked.snapshots} />
-            </div>
-          )}
-        </Section>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <Section title="1. 上傳 3MF" disabled={busy}>
+        <Field label="模型檔" hint="Bambu Studio 專案或一般 3MF，50MB 以內；十字孔做在模型目前的底部（貼平台那面）">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="rounded-full border border-zinc-300 px-3.5 py-1.5 text-sm dark:border-zinc-700"
+            >
+              {picked ? `已選擇：${picked.file.name}` : "選擇 3MF 檔"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".3mf"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && choose(e.target.files[0])}
+            />
+          </div>
+        </Field>
+        {preparing && <p className="text-sm text-zinc-500">讀取模型並拍攝 3D 截圖中…</p>}
+        {picked && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm">
+              目前尺寸 <span className="font-medium">{mm(picked.sizeMm)} mm</span>
+              <span className="text-zinc-500">・{picked.info}</span>
+            </p>
+            <SnapshotGrid snapshots={picked.snapshots} />
+          </div>
+        )}
+      </Section>
 
-        <Section title="2. 尺寸" disabled={busy || !picked}>
-          <Chips options={RESIZE_OPTIONS} value={resizeMode} onChange={(v) => setResizeMode(v as ResizeMode)} />
-          {resizeMode === "exact" && (
-            <>
-              <div className="flex flex-wrap gap-4">
-                {AXES.map((label, k) => (
-                  <Field key={label} label={`${label} mm`}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      step={0.1}
-                      value={size[k] || ""}
-                      onChange={(e) => setAxis(k, Number(e.target.value))}
-                      className={input}
-                    />
-                  </Field>
-                ))}
-              </div>
-              <Check checked={keepRatio} onChange={setKeepRatio} label="等比例縮放" />
-            </>
-          )}
-          {resizeMode === "ai" && <p className="text-sm text-zinc-500">在下面的需求說明寫想要的大小，例如「底部大約 25 mm 寬，適合放在單顆軸上」。</p>}
-        </Section>
-
-        <Section title="3. 鍵盤軸回彈（十字孔）" disabled={busy || !picked}>
-          <Check checked={stemOn} onChange={setStemOn} label="在模型底部做十字孔，插在鍵盤軸上按壓回彈" />
-          {stemOn && (
-            <>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {STEM_FIELDS.map((f) => (
-                  <Field key={f.key} label={`${f.label} mm`} hint={f.hint}>
-                    <input
-                      type="number"
-                      min={f.min}
-                      max={f.max}
-                      step={f.step}
-                      value={stem[f.key]}
-                      onChange={(e) => setStem((s) => ({ ...s, [f.key]: Number(e.target.value) }))}
-                      className={input}
-                    />
-                  </Field>
-                ))}
-              </div>
-              <p className="text-sm text-zinc-500">
-                孔的大小 = 十字 + 2 × 間隙：{(stem.crossLength + 2 * stem.clearance).toFixed(2)} × {(stem.crossWidth + 2 * stem.clearance).toFixed(2)} mm，深{" "}
-                {stem.depth} mm。柱座下方會留 {stemClearanceHeight(stem).toFixed(1)} mm，按到底也不會撞到軸體。
-                <button type="button" onClick={() => setStem(DEFAULT_STEM)} className="ml-2 underline">
-                  恢復 MX 預設值
-                </button>
-              </p>
-            </>
-          )}
-        </Section>
-
-        <Section title="4. 需求說明（給 AI 看）" disabled={busy || !picked}>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            maxLength={1000}
-            rows={3}
-            placeholder="例如：做成桌上的按壓紓壓公仔，底面不要超過 30 mm；十字孔放在重心下方；外觀要乾淨，看不到柱子"
-            className="rounded-lg border border-zinc-300 bg-transparent p-2.5 dark:border-zinc-700"
-          />
-        </Section>
-
-        {error && <p className="rounded-lg bg-red-100 p-3 text-red-700">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={busy || !picked}
-          className="h-12 rounded-full bg-foreground px-6 font-medium text-background transition-opacity disabled:opacity-50"
-        >
-          {phase === "uploading"
-            ? "上傳中…"
-            : phase === "working"
-              ? `AI 規劃並修改模型中…已經過 ${elapsed} 秒（約需 1–2 分鐘）`
-              : "開始修改"}
-        </button>
-        <p className="text-center text-xs text-zinc-500">每次修改會使用 OpenAI 點數。第一次用新的間隙，建議先印一個小的測試鬆緊。</p>
-      </form>
-
-      {result && <EditResultView result={result} />}
-    </div>
-  );
-}
-
-function SnapshotGrid({ snapshots }: { snapshots: Snapshot[] }) {
-  return (
-    <div className={`grid grid-cols-2 gap-2 ${snapshots.length > 4 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
-      {snapshots.map((s) => (
-        <figure key={s.id} className="flex flex-col gap-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={s.url} alt={s.label} className="aspect-square w-full rounded-lg border border-zinc-300 dark:border-zinc-700" />
-          <figcaption className="text-center text-xs text-zinc-500">{s.label}</figcaption>
-        </figure>
-      ))}
-    </div>
-  );
-}
-
-function EditResultView({ result }: { result: EditResult }) {
-  const { plan, stem } = result;
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-
-  // 把改好的模型也拍成截圖（多一張從正下方看，才看得到十字孔）
-  useEffect(() => {
-    let cancelled = false;
-    let shots: Snapshot[] = [];
-    (async () => {
-      const bytes = new Uint8Array(await (await fetch(result.fileUrl)).arrayBuffer());
-      shots = await renderSnapshots(readBambuProject(bytes).meshes, [...SNAPSHOT_VIEWS, BOTTOM_VIEW]);
-      if (cancelled) shots.forEach((s) => URL.revokeObjectURL(s.url));
-      else setSnapshots(shots);
-    })().catch((err) => console.error("改好的模型截圖失敗", err));
-    return () => {
-      cancelled = true;
-      shots.forEach((s) => URL.revokeObjectURL(s.url));
-    };
-  }, [result.fileUrl]);
-
-  const list = (title: string, items: string[]) =>
-    items.length > 0 && (
-      <div className="flex flex-col gap-1">
-        <h3 className="font-medium">{title}</h3>
-        <ul className="list-disc pl-5 text-sm">
-          {items.map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      </div>
-    );
-
-  return (
-    <section className="flex flex-col gap-4 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">修改結果</h2>
-        <a href={result.fileUrl} download={result.fileName} className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background">
-          下載 3MF
-        </a>
-      </div>
-      <p>{plan.summary}</p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-zinc-500">尺寸</dt>
-        <dd>
-          {mm(result.beforeMm)} → <span className="font-medium">{mm(result.afterMm)} mm</span>
-          <span className="text-zinc-500">（{plan.sizeReason}）</span>
-        </dd>
-        {stem && (
+      <Section title="2. 尺寸" disabled={busy || !picked}>
+        <Chips options={RESIZE_OPTIONS} value={resizeMode} onChange={(v) => setResizeMode(v as ResizeMode)} />
+        {resizeMode === "exact" && (
           <>
-            <dt className="text-zinc-500">十字孔</dt>
-            <dd>
-              {STEM_MODES[stem.mode]}・孔 {stem.holeMm.map((v) => v.toFixed(2)).join(" × ")} mm・柱座長 {stem.bossLengthMm.toFixed(1)} mm・位置偏移{" "}
-              {stem.centerMm.map((v) => v.toFixed(1)).join(", ")} mm
-              <span className="text-zinc-500">（{plan.stem.reason}）</span>
-            </dd>
+            <div className="flex flex-wrap gap-4">
+              {AXES.map((label, k) => (
+                <Field key={label} label={`${label} mm`}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={0.1}
+                    value={size[k] || ""}
+                    onChange={(e) => setAxis(k, Number(e.target.value))}
+                    className={input}
+                  />
+                </Field>
+              ))}
+            </div>
+            <Check checked={keepRatio} onChange={setKeepRatio} label="等比例縮放" />
           </>
         )}
-      </dl>
-      {list("程式調整", result.notes)}
-      {list("注意事項", plan.warnings)}
-      {list("列印建議", plan.printAdvice)}
-      {snapshots.length > 0 ? <SnapshotGrid snapshots={snapshots} /> : <p className="text-sm text-zinc-500">產生截圖中…</p>}
-      <ModelPreview url={result.fileUrl} format="3MF" />
-    </section>
+        {resizeMode === "ai" && <p className="text-sm text-zinc-500">在下面的需求說明寫想要的大小，例如「底部大約 25 mm 寬，適合放在單顆軸上」。</p>}
+      </Section>
+
+      <Section title="3. 鍵盤軸回彈（十字孔）" disabled={busy || !picked}>
+        <Check checked={stemOn} onChange={setStemOn} label="在模型底部做十字孔，插在鍵盤軸上按壓回彈" />
+        {stemOn && (
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {STEM_FIELDS.map((f) => (
+                <Field key={f.key} label={`${f.label} mm`} hint={f.hint}>
+                  <input
+                    type="number"
+                    min={f.min}
+                    max={f.max}
+                    step={f.step}
+                    value={stem[f.key]}
+                    onChange={(e) => setStem((s) => ({ ...s, [f.key]: Number(e.target.value) }))}
+                    className={input}
+                  />
+                </Field>
+              ))}
+            </div>
+            <p className="text-sm text-zinc-500">
+              孔的大小 = 十字 + 2 × 間隙：{(stem.crossLength + 2 * stem.clearance).toFixed(2)} × {(stem.crossWidth + 2 * stem.clearance).toFixed(2)} mm，深{" "}
+              {stem.depth} mm。柱座下方會留 {stemClearanceHeight(stem).toFixed(1)} mm，按到底也不會撞到軸體。
+              <button type="button" onClick={() => setStem(DEFAULT_STEM)} className="ml-2 underline">
+                恢復 MX 預設值
+              </button>
+            </p>
+          </>
+        )}
+      </Section>
+
+      <Section title="4. 需求說明（給 AI 看）" disabled={busy || !picked}>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          maxLength={1000}
+          rows={3}
+          placeholder="例如：做成桌上的按壓紓壓公仔，底面不要超過 30 mm；十字孔放在重心下方；外觀要乾淨，看不到柱子"
+          className="rounded-lg border border-zinc-300 bg-transparent p-2.5 dark:border-zinc-700"
+        />
+      </Section>
+
+      {error && <p className="rounded-lg bg-red-100 p-3 text-red-700">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={busy || !picked}
+        className="h-12 rounded-full bg-foreground px-6 font-medium text-background transition-opacity disabled:opacity-50"
+      >
+        {phase === "uploading"
+          ? "上傳中…"
+          : phase === "working"
+            ? `AI 規劃並修改模型中…已經過 ${elapsed} 秒（約需 1–2 分鐘）`
+            : "開始修改"}
+      </button>
+      <p className="text-center text-xs text-zinc-500">每次修改會使用 OpenAI 點數。第一次用新的間隙，建議先印一個小的測試鬆緊。</p>
+    </form>
   );
 }

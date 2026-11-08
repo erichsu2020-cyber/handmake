@@ -32,11 +32,11 @@ export async function POST(request: Request) {
   if (snapshotUrls.length > 4 || !snapshotUrls.every((u): u is string => typeof u === "string" && !!ownBlobUrl(u, MODEL_EDIT_SNAPSHOT_FOLDER))) {
     return Response.json({ error: "截圖網址不正確" }, { status: 400 });
   }
-  const name = typeof body.name === "string" ? body.name.trim().slice(0, 200) : "model.3mf";
+  const name = typeof body.name === "string" ? body.name.trim().slice(0, 200) || "model.3mf" : "model.3mf";
 
   try {
-    const result = await runModelEdit(body.fileUrl, name, edit, snapshotUrls);
-    return Response.json({ result });
+    const result = await runModelEdit(user.id, body.fileUrl, name, edit, snapshotUrls);
+    return Response.json({ edit: result });
   } catch (error) {
     if (error instanceof UserError) return Response.json({ error: error.message }, { status: error.status });
     console.error("AI 改模型失敗", error);

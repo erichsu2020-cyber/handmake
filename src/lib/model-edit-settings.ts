@@ -95,7 +95,12 @@ export type AiPlan = {
   printAdvice: string[];
 };
 
+// 一筆修改紀錄
 export type EditResult = {
+  id: string;
+  sourceName: string;
+  snapshotUrls: string[];
+  request: EditRequest;
   plan: AiPlan;
   beforeMm: [number, number, number];
   afterMm: [number, number, number];
@@ -104,4 +109,6 @@ export type EditResult = {
   notes: string[];
   fileUrl: string;
   fileName: string;
+  aiModel: string;
+  createdAt: string;
 };

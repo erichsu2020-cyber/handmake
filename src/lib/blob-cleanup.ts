@@ -6,6 +6,7 @@ import { Drawing } from "@/models/Drawing";
 import { PrintCheck } from "@/models/PrintCheck";
 import { PrintReview } from "@/models/PrintReview";
 import { Generation } from "@/models/Generation";
+import { ModelEdit } from "@/models/ModelEdit";
 
 // 找出 Vercel Blob 上沒有任何紀錄在用的檔案（例如重新轉檔前的舊版本、測試留下的檔案）
 
@@ -25,12 +26,13 @@ type BambuUploadUrls = { modelFileUrl?: string; bambu?: { fileUrl?: string } };
 type DrawingUrls = { previewUrl?: string; layers?: { url: string }[] };
 type PrintCheckUrls = { sourceFileUrl?: string; snapshotUrls?: string[]; fixedFileUrl?: string };
 type PrintReviewUrls = PrintCheckUrls & { photoUrls?: string[] };
+type ModelEditUrls = { sourceFileUrl?: string; snapshotUrls?: string[]; fileUrl?: string };
 
 const pathOf = (url: string) => decodeURIComponent(new URL(url).pathname.slice(1));
 
 async function referencedPaths() {
   await connectDB();
-  const [generations, designs, uploads, drawings, checks, reviews] = await Promise.all([
+  const [generations, designs, uploads, drawings, checks, reviews, edits] = await Promise.all([
     Generation.find(
       {},
       {
@@ -47,6 +49,7 @@ async function referencedPaths() {
     Drawing.find({}, { previewUrl: 1, "layers.url": 1 }).lean<DrawingUrls[]>(),
     PrintCheck.find({}, { sourceFileUrl: 1, snapshotUrls: 1, fixedFileUrl: 1 }).lean<PrintCheckUrls[]>(),
     PrintReview.find({}, { sourceFileUrl: 1, photoUrls: 1, snapshotUrls: 1, fixedFileUrl: 1 }).lean<PrintReviewUrls[]>(),
+    ModelEdit.find({}, { sourceFileUrl: 1, snapshotUrls: 1, fileUrl: 1 }).lean<ModelEditUrls[]>(),
   ]);
 
   const urls: (string | null | undefined)[] = [];
@@ -68,6 +71,9 @@ async function referencedPaths() {
   }
   for (const r of reviews) {
     urls.push(r.sourceFileUrl, ...(r.photoUrls ?? []), ...(r.snapshotUrls ?? []), r.fixedFileUrl);
+  }
+  for (const e of edits) {
+    urls.push(e.sourceFileUrl, ...(e.snapshotUrls ?? []), e.fileUrl);
   }
   return new Set(urls.filter((url): url is string => Boolean(url)).map(pathOf));
 }

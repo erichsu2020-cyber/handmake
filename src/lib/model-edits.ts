@@ -1,11 +1,14 @@
 import "server-only";
 import { put } from "@vercel/blob";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { isValidObjectId } from "mongoose";
 import { analyzeGeometry, bedSize, readBambuProject, type BambuProject } from "@/lib/bambu-project";
 import { UserError } from "@/lib/bambu-source";
 import { boundsSize, meshBounds, writeModel, type MeshData } from "@/lib/mesh";
 import { NotManifoldError } from "@/lib/mesh-ops";
+import { connectDB } from "@/lib/mongodb";
 import { planModelEdit } from "@/lib/model-edit-ai";
+import { TEXT_MODEL } from "@/lib/print-check-ai";
 import { applyModelEdit } from "@/lib/model-edit-geometry";
 import {
   MAX_MODEL_EDIT_UPLOAD_BYTES,
@@ -13,11 +16,58 @@ import {
   type EditRequest,
   type EditResult,
 } from "@/lib/model-edit-settings";
+import { ModelEdit } from "@/models/ModelEdit";
 
-// 「AI 改模型」：下載 3MF → AI 決定參數 → 程式縮放、挖十字孔 → 存成新的 3MF
-// 測試階段先不存紀錄，結果直接回給頁面
+// 「AI 改模型」：下載 3MF → AI 決定參數 → 程式縮放、挖十字孔 → 存成新的 3MF，並存一筆紀錄
 
-export async function runModelEdit(fileUrl: string, name: string, request: EditRequest, snapshotUrls: string[]): Promise<EditResult> {
+/* eslint-disable @typescript-eslint/no-explicit-any -- lean() 回來的文件型別不固定，在這裡統一轉換 */
+export function toModelEditView(doc: any): EditResult {
+  return {
+    id: doc._id.toString(),
+    sourceName: doc.sourceName,
+    snapshotUrls: doc.snapshotUrls ?? [],
+    request: doc.request,
+    plan: doc.plan,
+    beforeMm: doc.beforeMm,
+    afterMm: doc.afterMm,
+    stem: doc.stem ?? undefined,
+    notes: doc.notes ?? [],
+    fileUrl: doc.fileUrl,
+    fileName: doc.fileName,
+    aiModel: doc.aiModel,
+    createdAt: new Date(doc.createdAt).toISOString(),
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// 一律帶 userId：只查得到該帳號自己的紀錄
+export async function listModelEdits(userId: string, limit = 50) {
+  await connectDB();
+  const docs = await ModelEdit.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean();
+  return docs.map(toModelEditView);
+}
+
+export async function getModelEdit(id: string, userId: string) {
+  if (!isValidObjectId(id)) return null;
+  await connectDB();
+  const doc = await ModelEdit.findOne({ _id: id, userId }).lean();
+  return doc ? toModelEditView(doc) : null;
+}
+
+// 這筆紀錄的所有檔案（刪除時一起刪）
+export const modelEditOwnedUrls = (d: { sourceFileUrl?: string; snapshotUrls?: string[]; fileUrl?: string }) => [
+  d.sourceFileUrl,
+  ...(d.snapshotUrls ?? []),
+  d.fileUrl,
+];
+
+export async function runModelEdit(
+  userId: string,
+  fileUrl: string,
+  name: string,
+  request: EditRequest,
+  snapshotUrls: string[],
+): Promise<EditResult> {
   const res = await fetch(fileUrl, { cache: "no-store" });
   if (!res.ok) throw new UserError(`讀取 3MF 失敗 (${res.status})`, 502);
   const input = new Uint8Array(await res.arrayBuffer());
@@ -75,15 +125,23 @@ export async function runModelEdit(fileUrl: string, name: string, request: EditR
     addRandomSuffix: true,
   });
 
-  return {
+  await connectDB();
+  const doc = await ModelEdit.create({
+    userId,
+    sourceName: name,
+    sourceFileUrl: fileUrl,
+    snapshotUrls,
+    fileUrl: blob.url,
+    fileName,
+    request,
     plan,
     beforeMm,
     afterMm: edited.sizeMm,
     stem: edited.stem,
     notes,
-    fileUrl: blob.url,
-    fileName,
-  };
+    aiModel: TEXT_MODEL,
+  });
+  return toModelEditView(doc.toObject());
 }
 
 // 原本是 Bambu Studio 專案的話，保留它的列印設定（作法同 bambu-3mf.ts）並把模型放到平台中央
