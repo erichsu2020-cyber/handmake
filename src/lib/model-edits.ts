@@ -83,7 +83,13 @@ export async function runModelEdit(
   const beforeMm = boundsSize(meshBounds(project.meshes));
   const fixedSizeMm = request.resize.mode === "exact" ? request.resize.sizeMm! : request.resize.mode === "keep" ? beforeMm : undefined;
 
-  const plan = await planModelEdit({ request, geometry, fixedSizeMm, images: snapshotUrls });
+  let plan;
+  try {
+    plan = await planModelEdit({ request, geometry, fixedSizeMm, images: snapshotUrls });
+  } catch (error) {
+    console.error("AI 改模型規劃失敗", error);
+    throw new UserError(error instanceof Error ? `AI 規劃失敗：${error.message}` : "AI 規劃失敗", 502);
+  }
 
   const notes: string[] = [];
   let target = fixedSizeMm;

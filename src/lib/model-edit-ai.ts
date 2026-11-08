@@ -121,22 +121,36 @@ function buildPlanText({ request, geometry, fixedSizeMm, images }: PlanInput) {
   ].join("\n");
 }
 
+// Vercel 函式最多跑 300 秒（逾時頁面只會看到 504），AI 要在這之前結束，剩下的時間給下載、挖孔和存檔
+const AI_TIMEOUT_MS = 200_000;
+
 export async function planModelEdit(input: PlanInput): Promise<AiPlan> {
-  const openai = new OpenAI();
-  const response = await openai.responses.create({
-    model: TEXT_MODEL,
-    instructions: INSTRUCTIONS,
-    input: [
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: buildPlanText(input) },
-          ...input.images.map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
-        ],
-      },
-    ],
-    text: { format: { type: "json_schema", name: "model_edit_plan", schema: planSchema(), strict: true } },
-  });
+  // 不自動重試：重試一次就會超過時間上限
+  const openai = new OpenAI({ timeout: AI_TIMEOUT_MS, maxRetries: 0 });
+  const started = Date.now();
+  const response = await openai.responses
+    .create({
+      model: TEXT_MODEL,
+      instructions: INSTRUCTIONS,
+      // 這裡只要選尺寸、位置和做法，不需要深入推理：實測 medium 約 60 秒、low 約 27 秒、minimal 約 15 秒，結果差不多
+      ...(TEXT_MODEL.startsWith("gpt-5") ? { reasoning: { effort: "minimal" as const } } : {}),
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: buildPlanText(input) },
+            // 截圖只用來看形狀和方向，低解析度就夠，也比較快
+            ...input.images.map((url) => ({ type: "input_image" as const, image_url: url, detail: "low" as const })),
+          ],
+        },
+      ],
+      text: { format: { type: "json_schema", name: "model_edit_plan", schema: planSchema(), strict: true } },
+    })
+    .catch((error) => {
+      if (error instanceof OpenAI.APIConnectionTimeoutError) throw new Error("AI 回應太久（超過 200 秒），請再試一次");
+      throw error;
+    });
+  console.log(`AI 改模型：AI 規劃花了 ${Math.round((Date.now() - started) / 1000)} 秒`);
   try {
     return JSON.parse(response.output_text) as AiPlan;
   } catch {
